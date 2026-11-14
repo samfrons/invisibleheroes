@@ -28,17 +28,20 @@ export const SCOPE_GREEN = '#00FF00';
 export const GLASS = 'rgba(17, 17, 17, 0.86)';
 export const GLASS_DEEP = 'rgba(10, 10, 10, 0.92)';
 
-/** Seat hues: coral, teal, amber, green, violet. BLACK text on each is at least 6.8:1. */
+/**
+ * Seat hues: coral, teal, green, gold, violet. The same five as the battery cells in the 3D
+ * scene (STAGE_SEAT in three/palette.ts) and the DOM (style.css). BLACK text on each is 7:1 or more.
+ */
 export const SEAT_CORAL = '#FF6B6B';
 export const SEAT_TEAL = '#4ECDC4';
-export const SEAT_AMBER = '#FFA62B';
-export const SEAT_GREEN = '#6BCB77';
-export const SEAT_VIOLET = '#A78BFA';
-export const SEAT_BASE = [SEAT_CORAL, SEAT_TEAL, SEAT_AMBER, SEAT_GREEN, SEAT_VIOLET] as const;
+export const SEAT_GREEN = '#7EE36B';
+export const SEAT_AMBER = '#FFC93C';
+export const SEAT_VIOLET = '#B18CFF';
+export const SEAT_BASE = [SEAT_CORAL, SEAT_TEAL, SEAT_GREEN, SEAT_AMBER, SEAT_VIOLET] as const;
 /** On the dark stage the seat hues are already bright enough to glow. */
 export const SEAT_GLOW = SEAT_BASE;
 /** Light tints of the seat hues (DOM chips, 3D materials). */
-export const SEAT_TINT = ['#FFB3B3', '#A6E6E1', '#FFD39A', '#B4E5BB', '#D3C5FD'] as const;
+export const SEAT_TINT = ['#FFB3B3', '#A6E6E1', '#C4F2BA', '#FFE49C', '#D8C6FF'] as const;
 
 // ---- names other modules import (3D palette, DOM) -----------------------------
 

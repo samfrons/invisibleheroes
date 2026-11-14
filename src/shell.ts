@@ -47,6 +47,9 @@ const lanes = createRenderer(canvas, renderLabels(touch));
  * WebGL, the lanes play on the bare navy stage.
  */
 let scene: Centrepiece | null = null;
+const sceneCanvas = $<HTMLCanvasElement>('scene');
+/** The flattened picture a recording is taken from; exists only while one is running. */
+let film: HTMLCanvasElement | null = null;
 let stageSize = { width: 0, height: 0, dpr: 1 };
 const renderer: Renderer = {
   resize(width, height, dpr) {
@@ -57,6 +60,17 @@ const renderer: Renderer = {
   draw(frame) {
     scene?.draw(frame);
     lanes.draw(frame);
+    // While a video is being saved, both layers are flattened onto one canvas for the recorder.
+    // The 3D layer is copied in the same task it was drawn in, before the browser clears it.
+    if (film) {
+      const ctx = film.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, film.width, film.height);
+        if (scene) ctx.drawImage(sceneCanvas, 0, 0, film.width, film.height);
+        ctx.drawImage(canvas, 0, 0, film.width, film.height);
+      }
+    }
   },
   seatAt: (x, y) => lanes.seatAt(x, y),
 };
@@ -64,7 +78,7 @@ const renderer: Renderer = {
 const sceneWanted = new URLSearchParams(location.search).get('scene') !== 'off';
 void (sceneWanted ? import('./three/centrepiece') : Promise.reject(new Error('scene off')))
   .then(({ createCentrepiece }) =>
-    createCentrepiece($<HTMLCanvasElement>('scene'), { quality: touch ? 'low' : 'high' })
+    createCentrepiece(sceneCanvas, { quality: touch ? 'low' : 'high' })
   )
   .then((made) => {
     scene = made;
@@ -384,7 +398,12 @@ function startTake() {
 function startVideo(record: boolean) {
   if (!shown) return;
   audio.resume();
-  recorder = record ? createVideoRecorder(canvas, audio.stream()) : null;
+  if (record) {
+    film = document.createElement('canvas');
+    film.width = canvas.width;
+    film.height = canvas.height;
+  }
+  recorder = record && film ? createVideoRecorder(film, audio.stream()) : null;
   if (record && !recorder) {
     status = T.saveFailed;
     show('results');
@@ -411,6 +430,7 @@ async function finishVideo() {
       status = T.saveFailed;
     }
   }
+  film = null;
   if (shown) room?.setPhase('results', shown.theirs ? null : tally(shown.take.grades, shown.take.humans).score);
   show('results');
 }
