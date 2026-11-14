@@ -189,7 +189,7 @@ export function createConductor({
         if (tickT < -1e-6) {
           if (onBeat) audio.cue(tickT > -BEAT_S - 1e-6 ? 'go' : 'count', when);
         } else {
-          audio.tick(when, onBeat);
+          audio.tick(when, onBeat, Math.round(tickT / STEP_S));
         }
       }
       tickIndex += 1;

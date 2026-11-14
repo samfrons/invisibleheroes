@@ -19,8 +19,11 @@ export interface BandAudio {
    * on the audio clock; omitted or in the past means now. `level` is 0..1.
    */
   play(seat: number, midi: readonly number[], when?: number, level?: number): void;
-  /** The machine's ratchet tick. `accent` marks a downbeat. */
-  tick(when: number, accent: boolean): void;
+  /**
+   * The machine's backing on every eighth note. `accent` marks a beat; `step` is the
+   * sixteenth-note step from the first downbeat, so the backing knows the bar it is in.
+   */
+  tick(when: number, accent: boolean, step?: number): void;
   cue(cue: BandCue, when?: number): void;
   /** Silence everything already scheduled (a take stopped early). */
   hush(): void;
