@@ -84,6 +84,9 @@ async function peerHost(code: string): Promise<HostTransport> {
     if (!peer.destroyed) peer.reconnect();
   });
   peer.on('close', () => down());
+  // After the room is open, a broker error (a dropped socket, a guest that failed to reach us)
+  // is not the room failing: the phones already connected stay connected.
+  peer.on('error', () => undefined);
 
   return {
     onJoin: (listener) => void (join = listener),
@@ -107,9 +110,10 @@ async function peerGuest(code: string): Promise<GuestTransport> {
   let message: (data: unknown) => void = () => undefined;
   let closed: () => void = () => undefined;
 
+  let fail: (error: unknown) => void = () => undefined;
   const conn = await new Promise<ReturnType<typeof peer.connect>>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('The room did not answer.')), CONNECT_TIMEOUT_MS);
-    const fail = (error: unknown) => {
+    fail = (error) => {
       clearTimeout(timer);
       reject(error);
     };
@@ -131,7 +135,13 @@ async function peerGuest(code: string): Promise<GuestTransport> {
   conn.on('data', (data) => message(data));
   conn.on('close', () => closed());
   conn.on('error', () => closed());
-  peer.on('error', () => closed());
+  // Once the phone and the screen are talking directly, the broker no longer matters: if its
+  // socket drops, quietly ask for it back, and never mistake that for losing the room.
+  peer.off('error', fail);
+  peer.on('error', () => undefined);
+  peer.on('disconnected', () => {
+    if (!peer.destroyed) peer.reconnect();
+  });
 
   return {
     onMessage: (listener) => void (message = listener),
