@@ -439,7 +439,7 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
   mesh(G(new BoxGeometry(CON_W, 1.52, 0.08)), consoleDark, 0, 0, 0, panel);
   mesh(G(new BoxGeometry(CON_W, 0.03, 0.05)), chrome, 0, 0.74, 0.04, panel);
   mesh(G(new BoxGeometry(CON_W, 0.03, 0.05)), chrome, 0, -0.74, 0.04, panel);
-  // Two big round dials: VOLTAGE (pack mean) left, CURRENT (groove) right,
+  // Two big round dials: the cell's VOLTAGE left, its CURRENT right,
   // dark faces with glowing coral rims, like the reference video.
   const DIAL_X = [-4.25, 4.25] as const;
   const DIAL_R = 0.52;
@@ -956,10 +956,12 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
     anodeSurf.rotation.set(-Math.PI / 2 + wob * 0.025 * Math.sin(now * 1.3), wob * 0.02 * Math.sin(now * 0.9 + 1), 0);
     cathodeSurf.rotation.set(-Math.PI / 2 + wob * 0.03 * Math.sin(now * 1.7 + 2), wob * 0.025 * Math.sin(now * 1.1), 0);
 
-    // Biofilm thickens and glows with the groove.
+    // Biofilm grows with the givers' biofilm in the cell (kinetics.ts) and glows with the power.
     const groove = clamp01(frame.groove);
-    const thick = 0.6 + 0.7 * groove;
-    const coverage = 0.3 + 0.75 * groove;
+    const bf = frame.cell?.biofilm;
+    const film = bf ? clamp01(((bf[0] ?? 0) + (bf[1] ?? 0) + (bf[2] ?? 0)) / 3) : groove;
+    const thick = 0.6 + 0.7 * film;
+    const coverage = 0.3 + 0.75 * film;
     for (let i = 0; i < BLOBS; i++) {
       const pulse = still ? 1 : 1 + 0.12 * Math.sin(now * 2.1 + i * 1.7);
       // Colonies spread as the groove rises: each blob appears at its own threshold.
@@ -1079,10 +1081,12 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
     // Meters: the pack mean on the header; the console's groove, mean, leader and beat.
     const jitter = still || frame.mode === 'idle' ? 0 : Math.sin(now * 23) * 0.012 * groove;
     packNeedle.rotation.z = DIAL_SWEEP * (1 - 2 * clamp01(mean + jitter));
-    // VOLTAGE follows the pack mean, CURRENT the groove (with a beat tremor in play).
+    // VOLTAGE and CURRENT read the fuel cell itself (kinetics.ts): voltage sags as current rises.
     const beat = still || frame.mode === 'idle' ? 0 : Math.abs(Math.sin((t * Math.PI) / BEAT_S)) * 0.04 * groove;
-    dialNeedles[0]!.rotation.z = DIAL_SWEEP * (1 - 2 * clamp01(mean + jitter));
-    dialNeedles[1]!.rotation.z = DIAL_SWEEP * (1 - 2 * clamp01(groove + beat));
+    const volts = frame.cell ? frame.cell.voltage / 0.8 : mean;
+    const amps = frame.cell ? frame.cell.current / 3 : groove;
+    dialNeedles[0]!.rotation.z = DIAL_SWEEP * (1 - 2 * clamp01(volts + jitter));
+    dialNeedles[1]!.rotation.z = DIAL_SWEEP * (1 - 2 * clamp01(amps + beat));
     for (let i = 0; i < 2; i++) {
       const c = dialCentres[i]!;
       glow(c.x, c.y, c.z + 0.02, DIAL_R * 3.0, coralC, 0.22);

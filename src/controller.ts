@@ -22,7 +22,7 @@ import { HEROES, RANKS, T, fill } from './strings';
 
 type StateMessage = Extract<HostMessage, { k: 'state' }>;
 
-const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
+const SEAT_COLORS = ['var(--seat-0)', 'var(--seat-1)', 'var(--seat-2)', 'var(--seat-3)', 'var(--seat-4)'];
 const SEAT_INKS = new Array<string>(5).fill('var(--on-seat)');
 /**
  * Round trips at the start to settle the clock, then a slow heartbeat in the

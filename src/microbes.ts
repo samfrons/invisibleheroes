@@ -18,12 +18,16 @@ export interface Microbe {
   species: string;
   /** Main colour, as a web colour code. */
   color: string;
-  /** Keyboard key this player presses. */
+  /** Seat in the band (score.ts SEATS) and job in the fuel cell (kinetics.ts ROLES). */
+  seat: number;
+  /** Keyboard key this player presses (the game's seat key; 1 to 5 work too). */
   key: string;
   /** Signature move, used in the later "pattern twist" rounds. */
   move: Move;
-  /** Picture in public/microbes/. */
-  image: string;
+  /** Picture in public/microbes/, or null for a hero drawn by the game. */
+  image: string | null;
+  /** What this hero does in the fuel cell, in a few words. */
+  job: string;
   /** Superpower in a few words: what this microbe can do. */
   power: string;
   /** The learning card: why this microbe matters, in its own voice. */
@@ -36,9 +40,11 @@ export const MICROBES: Microbe[] = [
     name: 'Geo',
     species: 'Geobacter sulfurreducens',
     color: '#ffd23f', // yellow
+    seat: 0,
     key: 'a',
     move: 'tap',
     image: '/microbes/geo.jpg',
+    job: 'Puts electrons straight on the anode',
     power: 'Makes electricity with tiny nanowires',
     pitch:
       'I make electricity! I grow tiny wires and pass electrons out of my body. ' +
@@ -49,9 +55,11 @@ export const MICROBES: Microbe[] = [
     name: 'Shiva',
     species: 'Shewanella oneidensis',
     color: '#ff5fa2', // pink
-    key: 'f',
+    seat: 1,
+    key: 'd',
     move: 'double-tap',
     image: '/microbes/shiva.jpg',
+    job: 'Sends flavin shuttles: electrons land half a beat later',
     power: 'Breathes metals and cleans up toxic waste',
     pitch:
       'I can breathe metals instead of oxygen! That helps clean toxic metals out of ' +
@@ -62,9 +70,11 @@ export const MICROBES: Microbe[] = [
     name: 'Cable',
     species: 'Cable bacteria (Desulfobulbaceae)',
     color: '#5cc04a', // green
-    key: 'j',
+    seat: 4,
+    key: 'l',
     move: 'hold',
     image: '/microbes/cable.jpg',
+    job: 'Carries the current: lowers the resistance',
     power: 'Builds living electric cables in seafloor mud',
     pitch:
       'Thousands of us join into one living electric cable, centimetres long, hidden ' +
@@ -74,13 +84,33 @@ export const MICROBES: Microbe[] = [
     id: 'rhodo',
     name: 'Rhodo',
     species: 'Rhodopseudomonas palustris',
-    color: '#a24fd0', // purple
-    key: 'l',
+    color: '#b18cff', // purple
+    seat: 2,
+    key: 'g',
     move: 'triple-tap',
     image: '/microbes/rhodo.jpg',
+    job: 'Turns sunlight into electrons: brighter in the chorus',
     power: 'Runs on sunlight and makes hydrogen fuel',
     pitch:
       'I run on sunlight, like a plant, and I am purple! I can make hydrogen, ' +
       'a clean fuel for the future.',
   },
+  {
+    id: 'sporo',
+    name: 'Sporo',
+    species: 'Sporomusa ovata',
+    color: '#4ecdc4', // teal, the cathode side
+    seat: 3,
+    key: 'j',
+    move: 'tap',
+    image: null,
+    job: 'Takes the electrons at the cathode: keeps the beat',
+    power: 'Eats electrons and makes vinegar',
+    pitch:
+      'I sit on the other electrode and take the electrons back! I use them to turn ' +
+      'carbon dioxide into acetate, the acid in vinegar. No me, no current.',
+  },
 ];
+
+/** The heroes in seat order, so MICROBES_BY_SEAT[seat] is the hero playing that part. */
+export const MICROBES_BY_SEAT: readonly Microbe[] = [...MICROBES].sort((a, b) => a.seat - b.seat);

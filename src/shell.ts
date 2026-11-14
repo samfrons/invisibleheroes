@@ -6,6 +6,7 @@
  */
 import './style.css';
 import { charges, leaderOf, rankFor, tally } from './engine';
+import { ROLES, readout, report } from './kinetics';
 import { createConductor } from './game';
 import { openHostRoom, type HostRoom } from './net/host';
 import { carrierFromUrl } from './net/transport';
@@ -22,7 +23,7 @@ import type { Renderer } from './types';
 
 type Phase = 'lobby' | 'take' | 'results' | 'video' | 'shared';
 
-const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
+const SEAT_COLORS = ['var(--seat-0)', 'var(--seat-1)', 'var(--seat-2)', 'var(--seat-3)', 'var(--seat-4)'];
 /** White text only passes 4.5:1 on plum; the other four seat colours take ink. */
 const SEAT_INKS = new Array<string>(5).fill('var(--on-seat)');
 
@@ -284,6 +285,13 @@ function resultsCard(): string {
   const charge = charges(take.grades, take.humans);
   const winner = leaderOf(charge);
   const pack = Math.round((100 * charge.reduce((a, b) => a + b, 0)) / charge.length);
+  // The fuel cell: what the band made together, and whose part held it back.
+  const cell = report(take.grades, take.humans);
+  const total = readout(cell.cell);
+  const peak = readout({ ...cell.peak, energy: 0 });
+  const cellLine = fill(T.cellLine, { mJ: total.mJ, pct: pct(cell.share), uW: peak.uW, mV: peak.mV });
+  const weakLine =
+    cell.weak === null ? '' : fill(T.weakLink, { name: HEROES[cell.weak]!.name, why: T.why[ROLES[cell.weak]!] });
   const rows = HEROES.map((hero, seat) => {
     const human = take.humans[seat]!;
     return `<li class="row${seat === winner ? ' row-winner' : ''}" style="--seat:${SEAT_COLORS[seat]}">
@@ -302,6 +310,7 @@ function resultsCard(): string {
       ${newBest ? `<span class="tag">${T.newBest}</span>` : ''}
     </div>
     <p class="lede">${winner === null ? '' : `${esc(fill(T.wins, { name: HEROES[winner]!.name }))}. `}${fill(T.packLine, { pack })}. ${esc(rank.line)}</p>
+    <p class="note cell-line">${esc(cellLine)}${weakLine ? ` ${esc(weakLine)}` : ''}</p>
     <ul class="rows">${rows}</ul>
     ${bestStreak !== null ? `<p class="note">${fill(T.bestStreak, { n: bestStreak })}</p>` : ''}
     <div class="actions">

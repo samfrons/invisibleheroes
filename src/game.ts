@@ -37,6 +37,7 @@ import {
   SONG_S,
   STEP_S,
 } from './score';
+import { createCell, deposit, lampOf, step as stepCell, type Cell } from './kinetics';
 import type { Take } from './take';
 import type { BandAudio, Frame, FrameMode, Renderer, SeatFrame } from './types';
 
@@ -102,6 +103,8 @@ export function createConductor({
   const allPerfect = new Uint8Array(NOTES.length).fill(PERFECT);
   let humans: boolean[] = new Array<boolean>(SEAT_COUNT).fill(false);
   let run: Run = createRun(allPerfect);
+  /** The fuel cell under the band: every settled note feeds it (kinetics.ts). */
+  let cell: Cell = createCell();
   let shots: Shot[] = [];
   const grace = new Array<number>(SEAT_COUNT).fill(0);
   /** Per seat, 0..1: the battery cell, filled a note at a time as the run goes. */
@@ -114,6 +117,7 @@ export function createConductor({
     humans,
     remote: new Array<boolean>(SEAT_COUNT).fill(false),
     charge,
+    cell,
     leader: null,
     grades: run.grades,
     seats,
@@ -154,6 +158,8 @@ export function createConductor({
     resetSeats();
     charge.fill(0);
     frame.leader = null;
+    cell = createCell(Math.min(startAt, -COUNT_IN_S));
+    frame.cell = cell;
     t0 = seconds() - startAt;
     soundIndex = 0;
     tickIndex = 0;
@@ -223,6 +229,8 @@ export function createConductor({
       } else if (e.type === 'miss') {
         seat.missAt = t;
       }
+      // The cell hears every settled note at its own beat, so a replay feeds it the same way.
+      if (e.type !== 'stray') deposit(cell, e.seat, e.type === 'hit' ? chargeFor(e.grade) : 0, e.note.t);
       if (e.type === 'hit') {
         const rate = humans[e.seat] ? 1 : HOUSE_RATE;
         charge[e.seat]! += (chargeFor(e.grade) * rate) / NOTES_BY_SEAT[e.seat]!.length;
@@ -253,7 +261,9 @@ export function createConductor({
 
     frame.t = t;
     frame.now = now;
-    frame.groove = run.groove;
+    stepCell(cell, t);
+    frame.groove = lampOf(cell);
+    audio.setPower?.(frame.mode === 'idle' ? 1 : 0.35 + 0.65 * frame.groove);
     frame.streak = run.streak;
     if (frame.mode === 'video') {
       const bar = Math.floor(t / BAR_S);

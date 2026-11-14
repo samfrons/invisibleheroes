@@ -1,3 +1,5 @@
+import type { Cell } from './kinetics';
+
 /**
  * The seams between the game's parts. The conductor (game.ts) owns the clock
  * and the run; it tells the synth what to sound and hands the renderer one
@@ -25,6 +27,8 @@ export interface BandAudio {
    */
   tick(when: number, accent: boolean, step?: number): void;
   cue(cue: BandCue, when?: number): void;
+  /** 0..1: the fuel cell's power. The band's sound opens up as the cell makes more. */
+  setPower?(power: number): void;
   /** Silence everything already scheduled (a take stopped early). */
   hush(): void;
   /** The mix as a live stream for recording a video, or null if unsupported. */
@@ -70,9 +74,11 @@ export interface Frame {
   seats: readonly SeatFrame[];
   /** Per seat, 0..1: how full that seat's battery cell is. */
   charge?: readonly number[];
+  /** The fuel cell under the band (kinetics.ts): current, voltage, biofilm. */
+  cell?: Readonly<Cell>;
   /** The seat with the fullest cell, or null before anyone has charged. */
   leader?: number | null;
-  /** 0..1: how well the players are doing; drives the lamp. */
+  /** 0..1: the fuel cell's power against an all-perfect band's (kinetics.lampOf); drives the lamp. */
   groove: number;
   streak: number;
   takeNumber: number;

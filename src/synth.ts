@@ -578,6 +578,14 @@ export interface MasterChain {
   master: GainNode;
   /** The last node before the speakers: the mix as recorded. */
   out: AudioNode;
+  /** A low-pass the fuel cell's power opens: a weak cell sounds muffled, a strong one bright. */
+  tone: BiquadFilterNode;
+}
+
+/** Cutoff of the power low-pass for a cell power of 0..1: 900 Hz dim to 18 kHz full. */
+export function powerCutoff(power: number): number {
+  const p = Math.min(1, Math.max(0, power));
+  return 900 * Math.pow(20, p);
 }
 
 /** master gain, compressor, then one saturator; created once per context and wired to its destination. */
@@ -593,10 +601,15 @@ export function createMasterChain(ctx: BaseAudioContext, level = MASTER_LEVEL): 
   const shaper = ctx.createWaveShaper();
   shaper.curve = saturationCurve();
   shaper.oversample = '2x';
-  master.connect(comp);
+  const tone = ctx.createBiquadFilter();
+  tone.type = 'lowpass';
+  tone.Q.value = 0.9;
+  tone.frequency.value = powerCutoff(1);
+  master.connect(tone);
+  tone.connect(comp);
   comp.connect(shaper);
   shaper.connect(ctx.destination);
-  return { master, out: shaper };
+  return { master, out: shaper, tone };
 }
 
 function silentAudio(): BandAudio {
@@ -623,6 +636,8 @@ export function createBandAudio(): BandAudio {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let tail: AudioNode | null = null;
+  let tone: BiquadFilterNode | null = null;
+  let lastPower = -1;
   let streamDest: MediaStreamAudioDestinationNode | null = null;
   let kit: VoiceKit | null = null;
   let muted = false;
@@ -645,6 +660,7 @@ export function createBandAudio(): BandAudio {
     const chain = createMasterChain(c, target());
     master = chain.master;
     tail = chain.out;
+    tone = chain.tone;
     kit = new VoiceKit(c, master, makeNoiseBuffer(c), live, createSpace(c, master));
     // iOS unlock: play one silent sample.
     try {
@@ -676,6 +692,11 @@ export function createBandAudio(): BandAudio {
     },
     now() {
       return ctx && ctx.state === 'running' ? ctx.currentTime : null;
+    },
+    setPower(power) {
+      if (!ctx || !tone || disposed || Math.abs(power - lastPower) < 0.01) return;
+      lastPower = power;
+      tone.frequency.setTargetAtTime(powerCutoff(power), ctx.currentTime, 0.08);
     },
     setMuted(m) {
       muted = m;
