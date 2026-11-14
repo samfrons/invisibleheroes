@@ -10,6 +10,7 @@
  *   raf=1 (pace the bench on requestAnimationFrame)
  */
 import { GOOD, GOOD_S, MISS, PENDING, PERFECT } from '../engine';
+import { createCell } from '../kinetics';
 import { createRenderer } from '../render';
 import { DISPLAY_FAMILY } from '../render/style';
 import { BAR_S, NOTES, SEATS } from '../score';
@@ -30,20 +31,20 @@ const remote = SEATS.map((_, i) => remoteBits[i] === '1' && humans[i] === true);
 
 const labels: RenderLabels = {
   seats: [
-    { key: 'A', name: 'Geobacter', instrument: 'nanowire bass', fact: 'Geobacter passes electrons along wires it grows itself.' },
-    { key: 'S', name: 'Shewanella', instrument: 'flavin keys', fact: 'Shewanella sends out yellow shuttles that carry its electrons.' },
-    { key: 'D', name: 'Reed mannagrass', instrument: 'leaf chimes', fact: 'Reed roots leak sugar that feeds the microbes below.' },
+    { key: 'A', name: 'Geo', instrument: 'nanowire bass', fact: 'Geobacter passes electrons along wires it grows itself.' },
+    { key: 'S', name: 'Shiva', instrument: 'flavin keys', fact: 'Shewanella sends out yellow shuttles that carry its electrons.' },
+    { key: 'D', name: 'Rhodo', instrument: 'sunlight chimes', fact: 'Rhodo runs on sunlight, so it plays brighter as the day goes on.' },
     {
       key: 'F',
-      name: 'Sporomusa',
+      name: 'Sporo',
       instrument: 'vinegar drum',
       fact: 'Sporomusa turns electrons and carbon dioxide into acetate, the acid in vinegar.',
     },
     {
       key: 'G',
-      name: 'Methanobacterium',
-      instrument: 'bubble tuba',
-      fact: 'Methanobacterium turns electrons and carbon dioxide into methane.',
+      name: 'Cable',
+      instrument: 'cable tuba',
+      fact: 'Cable bacteria are long chains of cells that conduct electrons end to end.',
     },
   ],
   perfect: 'PERFECT',
@@ -90,6 +91,9 @@ for (const n of NOTES) {
   offset[n.i] = (h01(n.i, 2) - 0.5) * (decided[n.i] === PERFECT ? 0.1 : 0.28);
 }
 
+/** A stand-in fuel cell: biofilm grows through the song, conductance follows the groove. */
+const cell = createCell();
+
 const grades = new Uint8Array(NOTES.length);
 const seats: SeatFrame[] = SEATS.map(() => ({ hitAt: -Infinity, hitGrade: GOOD, missAt: -Infinity, pressAt: -Infinity }));
 const frame: Frame = {
@@ -102,6 +106,7 @@ const frame: Frame = {
   leader: null,
   grades,
   seats,
+  cell,
   groove,
   streak: 7,
   takeNumber: 3,
@@ -117,6 +122,8 @@ const perSeat = SEATS.map((_, seat) => NOTES.filter((n) => n.seat === seat).leng
 function fill(t: number, now: number): void {
   frame.t = t;
   frame.now = now;
+  cell.biofilm.fill(Math.min(1, 0.2 + t / 90));
+  cell.conductance = groove;
   charge.fill(0);
   for (const s of seats) {
     s.hitAt = -Infinity;

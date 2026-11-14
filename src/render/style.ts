@@ -29,19 +29,15 @@ export const GLASS = 'rgba(17, 17, 17, 0.86)';
 export const GLASS_DEEP = 'rgba(10, 10, 10, 0.92)';
 
 /**
- * Seat hues: coral, teal, green, gold, violet. The same five as the battery cells in the 3D
+ * Seat hues, one per microbe (src/microbes.ts): Geo yellow, Shiva pink, Rhodo violet,
+ * Sporo teal (the cathode side), Cable green. The same five as the battery cells in the 3D
  * scene (STAGE_SEAT in three/palette.ts) and the DOM (style.css). BLACK text on each is 7:1 or more.
  */
-export const SEAT_CORAL = '#FF6B6B';
-export const SEAT_TEAL = '#4ECDC4';
-export const SEAT_GREEN = '#7EE36B';
-export const SEAT_AMBER = '#FFC93C';
-export const SEAT_VIOLET = '#B18CFF';
-export const SEAT_BASE = [SEAT_CORAL, SEAT_TEAL, SEAT_GREEN, SEAT_AMBER, SEAT_VIOLET] as const;
+export const SEAT_BASE = ['#FFD23F', '#FF5FA2', '#B18CFF', '#4ECDC4', '#5CC04A'] as const;
 /** On the dark stage the seat hues are already bright enough to glow. */
 export const SEAT_GLOW = SEAT_BASE;
 /** Light tints of the seat hues (DOM chips, 3D materials). */
-export const SEAT_TINT = ['#FFB3B3', '#A6E6E1', '#C4F2BA', '#FFE49C', '#D8C6FF'] as const;
+export const SEAT_TINT = ['#FFEBA9', '#FFB7D5', '#DCCBFF', '#AFE8E4', '#B6E3AE'] as const;
 
 // ---- names other modules import (3D palette, DOM) -----------------------------
 

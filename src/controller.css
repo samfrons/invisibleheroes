@@ -175,3 +175,29 @@
     font-size: 15px;
   }
 }
+
+/* The player's own learning card, under the line-up while the take is not running. */
+.phone-yours {
+  margin-top: 12px;
+}
+
+.phone-card .learn-card {
+  margin-top: 6px;
+}
+
+.phone-card .pic-lg {
+  width: 56px;
+  height: 56px;
+}
+
+.phone-seats .seat-pic {
+  width: 40px;
+  height: 40px;
+}
+
+@media (max-height: 460px) {
+  .phone-seats .seat-pic {
+    width: 32px;
+    height: 32px;
+  }
+}

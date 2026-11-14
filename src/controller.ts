@@ -17,12 +17,13 @@ import {
   parseHostMessage,
   type HostMessage,
 } from './net/protocol';
+import { learningCard, portrait } from './cards';
 import { carrierFromUrl, openGuest, type GuestTransport } from './net/transport';
 import { HEROES, RANKS, T, fill } from './strings';
 
 type StateMessage = Extract<HostMessage, { k: 'state' }>;
 
-const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
+const SEAT_COLORS = ['var(--seat-0)', 'var(--seat-1)', 'var(--seat-2)', 'var(--seat-3)', 'var(--seat-4)'];
 const SEAT_INKS = new Array<string>(5).fill('var(--on-seat)');
 /**
  * Round trips at the start to settle the clock, then a slow heartbeat in the
@@ -73,6 +74,7 @@ export function startController(rawCode: string): void {
       return `<li><button type="button" class="seat" data-seat="${seat}" aria-pressed="${mine}"
           ${mine || free ? '' : 'disabled'}
           style="--seat:${SEAT_COLORS[seat]};--seat-ink:${SEAT_INKS[seat]}">
+          ${portrait(seat, 'seat-pic')}
           <span class="seat-name">${esc(hero.name)}</span>
           <span class="seat-instrument">${esc(hero.instrument)}</span>
           <span class="seat-state">${mine ? T.yours : free ? T.free : T.taken}</span>
@@ -82,8 +84,8 @@ export function startController(rawCode: string): void {
       <p class="eyebrow">${esc(fill(T.roomCode, { code: code ?? '' }))}</p>
       <h2>${T.pickHero}</h2>
       <ul class="seats phone-seats">${seats}</ul>
-      ${s.you === null ? '' : `<p class="note phone-fact">${esc(HEROES[s.you]!.short)}</p>`}
       <p class="lede" role="status">${s.you === null ? T.noSeat : T.waitHost}</p>
+      ${s.you === null ? '' : `<p class="eyebrow phone-yours">${T.yourCard}</p>${learningCard(s.you, false)}`}
     </section>`);
   }
 

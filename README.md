@@ -30,13 +30,13 @@ fetched after the page is up), and over it the note lanes. Adding
    as you watch; "Share this take" makes a link that plays your video on
    someone else's screen and dares them to beat it.
 
-| Seat | Hero                                | Instrument    | Key | Touch         |
-| ---- | ----------------------------------- | ------------- | --- | ------------- |
-| 1    | _Geobacter sulfurreducens_          | nanowire bass | `A` | first column  |
-| 2    | _Shewanella oneidensis_             | flavin keys   | `D` | second column |
-| 3    | Reed mannagrass (_Glyceria maxima_) | leaf chimes   | `G` | third column  |
-| 4    | _Sporomusa ovata_                   | vinegar drum  | `J` | fourth column |
-| 5    | _Methanobacterium palustre_         | bubble tuba   | `L` | fifth column  |
+| Seat | Hero                                       | Instrument      | Job in the fuel cell                         | Key | Touch         |
+| ---- | ------------------------------------------ | --------------- | -------------------------------------------- | --- | ------------- |
+| 1    | Geo (_Geobacter sulfurreducens_)           | nanowire bass   | gives electrons straight to the anode        | `A` | first column  |
+| 2    | Shiva (_Shewanella oneidensis_)            | flavin keys     | gives electrons by shuttle, half a beat late | `D` | second column |
+| 3    | Rhodo (_Rhodopseudomonas palustris_)       | sunlight chimes | gives electrons from sunlight                | `G` | third column  |
+| 4    | Sporo (_Sporomusa ovata_)                  | vinegar drum    | takes electrons at the cathode               | `J` | fourth column |
+| 5    | Cable (cable bacteria, Desulfobulbaceae)   | cable tuba      | carries the current                          | `L` | fifth column  |
 
 Keys `1` to `5` work too. Alone, the space bar is your key. `Esc` stops a take.
 On a phone or tablet every column is a touch pad from top to bottom, and every
@@ -45,6 +45,28 @@ more on one phone, turn it sideways.
 
 A press within 0.07 s of the beat is a PERFECT, within 0.16 s a GOOD. The team
 score counts a PERFECT as 1 and a GOOD as 0.7, over the players' seats only.
+
+### The band is a fuel cell
+
+Every note you land feeds a small model of a microbial fuel cell
+(`src/kinetics.ts`), and the cell is what lights the lamp, swings the VOLTAGE
+and CURRENT dials, grows the biofilm and opens up the sound of the band:
+
+- **Geo, Shiva and Rhodo give.** Each landed note puts electrons on the anode.
+  Geo's arrive at once down its nanowires; Shiva's ride a flavin shuttle and
+  land half a beat later, on the beat its keys skank against; Rhodo's scale
+  with the sunlight, which rises from dawn in the intro to full sun in the
+  chorus. Their biofilm grows as they land notes and thins with every miss, and
+  a thicker biofilm gives more per note.
+- **Sporo takes.** The drum is the cathode: every landed beat lets electrons
+  off the anode to make acetate. Without the drum, no current flows at all.
+- **Cable carries.** Every landed tuba note lowers the cell's resistance, which
+  creeps back up between notes. Without the cable the cell makes about a third
+  less.
+
+Power is voltage times current, and the voltage sags as the current climbs, as
+in a real cell. The results card says how much energy the take made against a
+perfect band, and which player's part held the cell back the most.
 
 ### Play with phones
 
@@ -87,16 +109,18 @@ The instruments are made up. What each hero does is not:
   Nature 2005).
 - **_Shewanella oneidensis_** releases flavins, small molecules that carry its
   electrons across to a surface (Marsili et al., PNAS 2008).
-- **Reed mannagrass** is a plant: its roots leak sugars made from sunlight,
-  which feed the electricity-making microbes around them (Strik et al., Int. J.
-  Energy Res. 2008).
+- **_Rhodopseudomonas palustris_** is a purple bacterium that runs on sunlight,
+  makes hydrogen, and can make electricity in a fuel cell (Xing et al.,
+  Environ. Sci. Technol. 2008).
 - **_Sporomusa ovata_** takes electrons from an electrode and uses them to turn
   carbon dioxide into acetate, the acid in vinegar (Nevin et al., mBio 2010).
-- **_Methanobacterium palustre_** takes electrons from an electrode and turns
-  carbon dioxide into methane (Cheng et al., Environ. Sci. Technol. 2009).
+- **Cable bacteria** join thousands of cells end to end into living wires that
+  carry electrons centimetres through seafloor mud (Pfeffer et al., Nature
+  2012).
 
-So the band lines up like a circuit: two that give electrons, the plant that
-feeds them, and two that take electrons back.
+So the band lines up like a circuit: three that give electrons, one that
+carries them, and one that takes them back. The microbe pictures in
+`public/microbes/` and the learning cards in `src/microbes.ts` are by Anaïs.
 
 ## Run it
 
@@ -107,7 +131,7 @@ npm test          # unit tests
 npm run build     # static site in dist/, works from any path
 ```
 
-No audio or image files: the sound is synthesised with the Web Audio API and
+No audio files, and the only pictures are the heroes' portraits: the sound is synthesised with the Web Audio API and
 the picture is drawn on one canvas. Two small libraries are bundled, PeerJS
 for the phone connection and a QR code generator; the first is only fetched
 when a room is opened.
@@ -118,6 +142,8 @@ when a room is opened.
 | ----------------- | ----------------------------------------------------------------------------- |
 | `src/score.ts`    | The tune as data: 24 bars, five parts, step patterns over an Am, F, C, G loop |
 | `src/engine.ts`   | One run through the tune: grades presses, plays the machine's seats, scores   |
+| `src/kinetics.ts` | The fuel cell: biofilm, shuttles, sunlight, cathode, resistance, power        |
+| `src/microbes.ts` | The five heroes' learning cards and pictures                                  |
 | `src/take.ts`     | A finished take as about 140 characters, so it fits in a link                 |
 | `src/director.ts` | The video's shot list, decided from the take alone                            |
 | `src/game.ts`     | The conductor: the clock, the animation loop, sound scheduled ahead           |

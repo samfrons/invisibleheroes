@@ -26,11 +26,11 @@ export const PAPER = '#FAFAF6';
 export const TEAL_ACCENT = '#2F8073';
 
 /**
- * Per seat, in seat order (wire, keys, chimes, drum, tuba): coral, teal,
- * scope green, gold, violet. Matches the old 2D order of hue families
- * (orange, teal-blue, avocado, harvest gold, plum).
+ * Per seat, in seat order (wire, keys, chimes, drum, tuba), one per microbe
+ * (src/microbes.ts): Geo yellow, Shiva pink, Rhodo violet, Sporo teal,
+ * Cable green.
  */
-export const STAGE_SEAT = ['#FF6B6B', '#4ECDC4', '#7EE36B', '#FFC93C', '#B18CFF'] as const;
+export const STAGE_SEAT = ['#FFD23F', '#FF5FA2', '#B18CFF', '#4ECDC4', '#5CC04A'] as const;
 /** Back-compat name used inside the scene. */
 export const SEAT_STRONG = STAGE_SEAT;
 
