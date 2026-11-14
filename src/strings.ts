@@ -95,6 +95,7 @@ export const T = {
   start: 'Start the machine',
   startNeedsPlayer: 'Pick at least one player',
   meet: 'Meet the band',
+  tryChain: 'Try Electron Chain',
   honest:
     'The instruments are made up. The heroes are real: Geobacter and Shewanella give electrons to an electrode, the reed feeds microbes like them, and Sporomusa and Methanobacterium take electrons back.',
   turnPhone: 'Three or more on one phone? Turn it sideways for wider pads.',

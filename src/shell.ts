@@ -142,6 +142,7 @@ function lobbyCard(): string {
         ${players ? T.start : T.startNeedsPlayer}
       </button>
       ${roomState === 'open' ? '' : `<button type="button" class="btn" data-action="room" ${roomState === 'opening' ? 'disabled' : ''}>${roomState === 'opening' ? T.opening : T.addPhones}</button>`}
+      <a class="btn btn-quiet" href="?game=chain">${T.tryChain}</a>
       <span class="career">${esc(careerLine())}</span>
     </div>
     ${roomPanel()}
