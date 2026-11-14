@@ -1,5 +1,7 @@
 # Invisible Heroes: The Biofilm Band
 
+**▶ Play it now: [invisibleheroes.vercel.app](https://invisibleheroes.vercel.app/)**
+
 A music game for one to five players around one screen, about a minute a
 take. Play with keys, with fingers, or scan a QR code and use your phone as
 your button.
@@ -16,6 +18,20 @@ fetched after the page is up), and over it the note lanes. Adding
 `?scene=off` to the address plays without the 3D layer on a slow device.
 
 ![Mid-song: the fuel cell and battery behind the note lanes](docs/screenshots/take.png)
+
+## How it works
+
+Open [invisibleheroes.vercel.app](https://invisibleheroes.vercel.app/) on any
+screen. Nothing to install, no account.
+
+| 1. Pick the band | 2. Play the take | 3. Get the video |
+| :---: | :---: | :---: |
+| ![Choosing the line-up](docs/screenshots/lobby.png) | ![Mid-song: electrons running down the lanes](docs/screenshots/take.png) | ![The results card](docs/screenshots/results.png) |
+| Tap a hero to play it; the machine plays the rest. | Hit your key as each electron reaches your ring. | See the score, watch the cut video, save it or share a link. |
+
+Want friends in on it? Press **Add phones** on the big screen, scan the QR
+code, and each phone becomes one player's button (see
+[Play with phones](#play-with-phones)).
 
 ## How to play
 
