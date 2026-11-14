@@ -251,7 +251,7 @@ export function computeLayout(width: number, height: number): Layout {
   const padY = h - padH - m;
   const floorY = padY - m;
   const ringR = clamp(Math.min(colW * 0.17, R * 0.06), 7, 30);
-  const glyphSize = Math.max(16, Math.min(colW * 0.32, R * 0.13));
+  const glyphSize = Math.max(28, Math.min(colW * 0.42, R * 0.17));
   const ringY = floorY - glyphSize - m - ringR * 1.3;
   const ballR = clamp(ringR * 0.4, 3, 9);
   const trackW = ballR * 2 + 2;

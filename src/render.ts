@@ -674,15 +674,9 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
   // ---- seats ----------------------------------------------------------------
 
   function drawGlyphs(frame: Frame): void {
-    const t = frame.t;
     for (let seat = 0; seat < SEATS_N; seat++) {
       const col = L.cols[seat]!;
-      const sf = frame.seats[seat];
-      const hitAge = sf && t >= sf.hitAt ? t - sf.hitAt : Infinity;
-      const missAge = sf && t >= sf.missAt ? t - sf.missAt : Infinity;
-      const pulse = hitAge < 0.6 ? Math.exp(-hitAge * 6) : 0;
-      const dim = missAge < 0.5 ? 1 - missAge / 0.5 : 0;
-      drawGlyph(ctx, seat, col.glyphX, col.glyphY, col.glyphSize, pulse, dim, Math.max(2.5, olw * 1.2), seatAlpha[seat]!);
+      drawGlyph(ctx, frame, seat, col.glyphX, col.glyphY, col.glyphSize, Math.max(2.5, olw * 1.2), seatAlpha[seat]!);
     }
   }
 
