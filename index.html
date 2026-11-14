@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Invisible Heroes: The Biofilm Band</title>
+    <meta
+      name="description"
+      content="A same-screen music game for one to five players. Each player is a microbe or a plant with an instrument: catch the electrons on the beat, then watch the music video of your take."
+    />
+    <meta name="theme-color" content="#0C1638" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Biofilm Band" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="bar">
+        <div class="brand">
+          <span class="brand-kicker">Invisible Heroes</span>
+          <h1>The Biofilm Band</h1>
+        </div>
+        <div class="bar-actions">
+          <span id="hud" class="hud"></span>
+          <button type="button" class="btn btn-quiet" id="sound" aria-pressed="true"></button>
+          <button type="button" class="btn btn-quiet" id="fullscreen" hidden></button>
+        </div>
+      </header>
+      <main id="stage" class="stage" tabindex="-1">
+        <canvas id="canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
+      </main>
+      <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

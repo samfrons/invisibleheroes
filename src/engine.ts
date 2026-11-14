@@ -75,17 +75,24 @@ function nextNote(run: Run, seat: number): Note | null {
   return index === undefined ? null : NOTES[index]!;
 }
 
-/** Settle everything whose time has come by `t`: scripted notes, and open notes now out of reach. */
-export function advance(run: Run, t: number): RunEvent[] {
+/**
+ * Settle everything whose time has come by `t`: scripted notes, and open notes now out of reach.
+ *
+ * `grace` (seconds per seat) holds a seat's open notes a little longer before they become
+ * misses. A press from a phone arrives after it was made, carrying the time it was made at;
+ * without the grace its note would already be written off.
+ */
+export function advance(run: Run, t: number, grace?: readonly number[]): RunEvent[] {
   const events: RunEvent[] = [];
   for (let seat = 0; seat < SEAT_COUNT; seat++) {
+    const reach = GOOD_S + (grace?.[seat] ?? 0);
     for (let note = nextNote(run, seat); note; note = nextNote(run, seat)) {
       const scripted = run.script[note.i]!;
       if (scripted !== PENDING) {
         if (note.t > t) break;
         events.push(settle(run, note, scripted as Grade, true));
       } else {
-        if (note.t >= t - GOOD_S) break;
+        if (note.t >= t - reach) break;
         events.push(settle(run, note, MISS, false));
       }
     }
