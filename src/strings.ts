@@ -19,6 +19,8 @@ export interface Hero {
   instrument: string;
   /** What it really does, in one sentence. */
   fact: string;
+  /** The same in 12 words or fewer, for the seat card, the phone and the video credits. */
+  short: string;
   /** Where that sentence comes from. */
   source: string;
 }
@@ -32,6 +34,7 @@ export const HEROES: readonly Hero[] = [
     latin: true,
     instrument: 'nanowire bass',
     fact: 'Grows protein filaments that conduct electricity and passes electrons along them to an electrode.',
+    short: 'Geobacter passes electrons along wires it grows itself.',
     source: 'Reguera et al., Nature 2005',
   },
   {
@@ -41,6 +44,7 @@ export const HEROES: readonly Hero[] = [
     latin: true,
     instrument: 'flavin keys',
     fact: 'Releases flavins, small molecules that carry its electrons across to a surface.',
+    short: 'Shewanella sends out yellow shuttles that carry its electrons.',
     source: 'Marsili et al., PNAS 2008',
   },
   {
@@ -50,6 +54,7 @@ export const HEROES: readonly Hero[] = [
     latin: false,
     instrument: 'leaf chimes',
     fact: 'A plant: its roots leak sugars made from sunlight, which feed the electricity-making microbes around them.',
+    short: 'Reed roots leak sugar that feeds the microbes below.',
     source: 'Strik et al., Int. J. Energy Res. 2008',
   },
   {
@@ -59,6 +64,7 @@ export const HEROES: readonly Hero[] = [
     latin: true,
     instrument: 'vinegar drum',
     fact: 'Takes electrons from an electrode and uses them to turn carbon dioxide into acetate, the acid in vinegar.',
+    short: 'Sporomusa turns electrons and carbon dioxide into acetate, the acid in vinegar.',
     source: 'Nevin et al., mBio 2010',
   },
   {
@@ -68,6 +74,7 @@ export const HEROES: readonly Hero[] = [
     latin: true,
     instrument: 'bubble tuba',
     fact: 'Takes electrons from an electrode and turns carbon dioxide into methane gas.',
+    short: 'Methanobacterium turns electrons and carbon dioxide into methane.',
     source: 'Cheng et al., Environ. Sci. Technol. 2009',
   },
 ];
@@ -80,9 +87,9 @@ export const RANKS: Record<Rank, { title: string; line: string }> = {
 };
 
 export const T = {
-  eyebrow: 'A chain-reaction band for 1 to 5 players',
+  eyebrow: 'A band battle for 1 to 5 players',
   lobbyTitle: 'Who is playing?',
-  how: 'An electron rolls down your chute. Hit your key, or tap your column, when the ring closes on it.',
+  how: 'Every note you land sends an electron through the fuel cell into your battery cell. Hit your key, or tap your column, when the ring closes. Fullest cell wins.',
   player: 'Player',
   machine: 'Machine',
   start: 'Start the machine',
@@ -105,6 +112,10 @@ export const T = {
   newBest: 'New best',
   hits: '{hit} of {total}',
   bestStreak: 'Longest run: {n} in a row',
+  wins: '{name} wins the battle',
+  packLine: 'Battery pack {pack}% charged',
+  cell: '{n}%',
+  house: 'machine',
   watch: 'Watch the video',
   save: 'Save the video file',
   saving: 'Recording the video. It saves when the song ends.',
@@ -160,23 +171,48 @@ export const T = {
   lost: 'Lost the room.',
 } as const;
 
+/**
+ * Lines from Sam Frons's "Bacterial Blues", used as caption cards in the video.
+ * The last three are the chant, one per hit of the final bar.
+ */
+const LYRICS = [
+  'Well, I got bacteria in my fuel cell tonight',
+  "They're munchin' on sewage by the pale moonlight",
+  'Down in the chamber where the microbes play',
+  "Electrons dancin' like it's judgment day",
+  "Geobacter's singing its electron lullaby",
+  "It's a microscopic carnival ride",
+  "So here's to the bugs that nobody sees",
+] as const;
+const CHANT = ['WE ARE THE MICROBES!', 'CLEANING YOUR WATER!', 'MAKING ELECTRICITY!'] as const;
+
 export function fill(template: string, values: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ''));
 }
 
 export function renderLabels(touch: boolean): RenderLabels {
   return {
-    seats: HEROES.map((h) => ({ key: touch ? 'TAP' : h.key, name: h.name, instrument: h.instrument })),
+    seats: HEROES.map((h) => ({
+      key: touch ? 'TAP' : h.key,
+      name: h.name,
+      instrument: h.instrument,
+      fact: h.short,
+    })),
     perfect: 'PERFECT',
     good: 'GOOD',
     miss: 'MISS',
     machine: 'MACHINE',
+    phone: 'PHONE',
     take: 'TAKE',
+    battery: 'BATTERY',
+    winner: 'WINNER',
     onAir: 'ON AIR',
     countIn: ['4', '3', '2', 'GO'],
     title: 'THE BIOFILM BAND',
     subtitle: 'an Invisible Heroes video',
     rec: 'REC',
     theEnd: 'THE END',
+    lyrics: LYRICS,
+    chant: CHANT,
   };
 }

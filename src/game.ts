@@ -14,16 +14,29 @@
 import { planShots, type Shot } from './director';
 import {
   GOOD,
+  HOUSE_RATE,
   MISS,
   PERFECT,
   advance,
+  chargeFor,
+  leaderOf,
   createRun,
   press as pressRun,
   scriptForTake,
   type Run,
   type RunEvent,
 } from './engine';
-import { BARS, BAR_S, BEAT_S, COUNT_IN_S, NOTES, SEAT_COUNT, SONG_S, STEP_S } from './score';
+import {
+  BARS,
+  BAR_S,
+  BEAT_S,
+  COUNT_IN_S,
+  NOTES,
+  NOTES_BY_SEAT,
+  SEAT_COUNT,
+  SONG_S,
+  STEP_S,
+} from './score';
 import type { Take } from './take';
 import type { BandAudio, Frame, FrameMode, Renderer, SeatFrame } from './types';
 
@@ -91,12 +104,17 @@ export function createConductor({
   let run: Run = createRun(allPerfect);
   let shots: Shot[] = [];
   const grace = new Array<number>(SEAT_COUNT).fill(0);
+  /** Per seat, 0..1: the battery cell, filled a note at a time as the run goes. */
+  const charge = new Array<number>(SEAT_COUNT).fill(0);
 
   const frame: Frame = {
     mode: 'idle',
     t: 0,
     now: 0,
     humans,
+    remote: new Array<boolean>(SEAT_COUNT).fill(false),
+    charge,
+    leader: null,
     grades: run.grades,
     seats,
     groove: 0.5,
@@ -134,6 +152,8 @@ export function createConductor({
     frame.humans = humans;
     frame.shot = null;
     resetSeats();
+    charge.fill(0);
+    frame.leader = null;
     t0 = seconds() - startAt;
     soundIndex = 0;
     tickIndex = 0;
@@ -203,6 +223,11 @@ export function createConductor({
       } else if (e.type === 'miss') {
         seat.missAt = t;
       }
+      if (e.type === 'hit') {
+        const rate = humans[e.seat] ? 1 : HOUSE_RATE;
+        charge[e.seat]! += (chargeFor(e.grade) * rate) / NOTES_BY_SEAT[e.seat]!.length;
+        frame.leader = leaderOf(charge);
+      }
       if (onJudge && frame.mode === 'take' && !(e.type !== 'stray' && e.scripted)) {
         onJudge(e.seat, e.type === 'hit' ? e.grade : e.type === 'miss' ? MISS : 0);
       }
@@ -269,6 +294,7 @@ export function createConductor({
       begin('video', take.grades.slice(), -COUNT_IN_S - LEAD_IN_S);
     },
     setRemoteSeats(remote) {
+      frame.remote = [...remote];
       for (let seat = 0; seat < SEAT_COUNT; seat++) grace[seat] = remote[seat] ? REMOTE_GRACE_S : 0;
     },
     press(seat, at) {

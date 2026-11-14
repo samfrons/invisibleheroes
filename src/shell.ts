@@ -5,7 +5,7 @@
  * only decides what is on screen and forwards presses.
  */
 import './style.css';
-import { rankFor, tally } from './engine';
+import { charges, leaderOf, rankFor, tally } from './engine';
 import { createConductor } from './game';
 import { openHostRoom, type HostRoom } from './net/host';
 import { carrierFromUrl } from './net/transport';
@@ -229,17 +229,18 @@ function resultsCard(): string {
   const { take, number, bestStreak, theirs, newBest } = shown;
   const result = tally(take.grades, take.humans);
   const rank = RANKS[rankFor(result.score)];
+  // The battle: every seat has a cell, the machine's included, and the fullest wins.
+  const charge = charges(take.grades, take.humans);
+  const winner = leaderOf(charge);
+  const pack = Math.round((100 * charge.reduce((a, b) => a + b, 0)) / charge.length);
   const rows = HEROES.map((hero, seat) => {
-    if (!take.humans[seat]) return '';
-    const s = result.seats[seat]!;
-    const share = (n: number) => (s.total ? (100 * n) / s.total : 0);
-    return `<li class="row" style="--seat:${SEAT_COLORS[seat]}">
-      <span class="row-name">${esc(hero.name)}</span>
+    const human = take.humans[seat]!;
+    return `<li class="row${seat === winner ? ' row-winner' : ''}" style="--seat:${SEAT_COLORS[seat]}">
+      <span class="row-name">${esc(hero.name)}${human ? '' : ` <small>${T.house}</small>`}</span>
       <span class="meter" aria-hidden="true">
-        <span class="meter-perfect" style="width:${share(s.perfect)}%"></span>
-        <span class="meter-good" style="width:${share(s.good)}%"></span>
+        <span class="meter-perfect" style="width:${100 * charge[seat]!}%"></span>
       </span>
-      <span class="row-count">${fill(T.hits, { hit: s.perfect + s.good, total: s.total })}</span>
+      <span class="row-count">${fill(T.cell, { n: Math.round(100 * charge[seat]!) })}</span>
     </li>`;
   }).join('');
   return `<section class="card" aria-labelledby="card-title">
@@ -249,7 +250,7 @@ function resultsCard(): string {
       <span class="score-number">${pct(result.score)}%</span>
       ${newBest ? `<span class="tag">${T.newBest}</span>` : ''}
     </div>
-    <p class="lede">${esc(rank.line)}</p>
+    <p class="lede">${winner === null ? '' : `${esc(fill(T.wins, { name: HEROES[winner]!.name }))}. `}${fill(T.packLine, { pack })}. ${esc(rank.line)}</p>
     <ul class="rows">${rows}</ul>
     ${bestStreak !== null ? `<p class="note">${fill(T.bestStreak, { n: bestStreak })}</p>` : ''}
     <div class="actions">

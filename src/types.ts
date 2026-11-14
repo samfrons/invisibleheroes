@@ -60,9 +60,15 @@ export interface Frame {
   now: number;
   /** Which seats a person plays. Machine seats are drawn as such. */
   humans: readonly boolean[];
+  /** Which of those are played from a phone: their pad shows `labels.phone`, not a key. */
+  remote?: readonly boolean[];
   /** Grade per note (engine.ts: PENDING, MISS, GOOD, PERFECT), indexed like NOTES. */
   grades: Uint8Array;
   seats: readonly SeatFrame[];
+  /** Per seat, 0..1: how full that seat's battery cell is. */
+  charge?: readonly number[];
+  /** The seat with the fullest cell, or null before anyone has charged. */
+  leader?: number | null;
   /** 0..1: how well the players are doing; drives the lamp. */
   groove: number;
   streak: number;
@@ -81,6 +87,8 @@ export interface SeatLabel {
   name: string;
   /** The made-up instrument ('nanowire bass'). */
   instrument: string;
+  /** What the organism really does, 12 words or fewer. For credits and cards, never during play. */
+  fact?: string;
 }
 
 /** Every word the renderer paints. English today; one object so it can be swapped. */
@@ -90,7 +98,11 @@ export interface RenderLabels {
   good: string;
   miss: string;
   machine: string;
+  /** Shown on the pad of a seat played from a phone. */
+  phone?: string;
   take: string;
+  battery?: string;
+  winner?: string;
   onAir: string;
   /** Count-in words, last one is the go word: ['4', '3', '2', '1'] style, shown one per beat. */
   countIn: readonly string[];
@@ -98,6 +110,10 @@ export interface RenderLabels {
   subtitle: string;
   rec: string;
   theEnd: string;
+  /** Video only: lines for filmstrip caption cards, in order. */
+  lyrics?: readonly string[];
+  /** Video only: one card per hit of the last bar (three hits). */
+  chant?: readonly string[];
 }
 
 export interface Renderer {
