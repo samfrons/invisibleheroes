@@ -31,16 +31,28 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--body);
-  /* No pull-to-refresh or rubber-banding under five thumbs. */
+  /* No pull-to-refresh or rubber-banding under five thumbs, and nothing on the page itself scrolls:
+     the one thing that may scroll is a card taller than a small phone. */
   overscroll-behavior: none;
+  overflow: hidden;
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* No double-tap zoom or tap delay anywhere; the canvas and the controller pad go further (none). */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app {
   display: flex;
   flex-direction: column;
+  /* The visible viewport exactly, also while a mobile toolbar slides in or out. Each line is the
+     fallback for the one below it: vh (old), fill-available (Safari < 15.4), dvh (current). */
   height: 100vh;
+  height: -webkit-fill-available;
   height: 100dvh;
+  overflow: hidden;
+  /* Notch, rounded corners and home indicator: the header, the stage and the controller card all
+     stay inside, so the far columns are never under the cut-out. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
@@ -55,10 +67,14 @@ body {
   border-bottom: 3px solid var(--ink);
 }
 
+.brand {
+  min-width: 0;
+}
+
 .brand-kicker {
   display: block;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-2);
@@ -74,6 +90,7 @@ h1 {
 
 .bar-actions {
   display: flex;
+  flex: none;
   gap: 8px;
 }
 
@@ -93,10 +110,20 @@ h1 {
     gap: 6px;
   }
   .btn-quiet {
-    min-height: 34px;
     padding: 4px 8px;
     font-size: 12px;
     white-space: nowrap;
+  }
+}
+
+/* The narrowest phones (320 px): while a take runs the header holds three buttons, which leaves no
+   room for the title, so the title steps aside instead of being squeezed under them. */
+@media (max-width: 359px) {
+  .bar:has(.hud > button) .brand {
+    display: none;
+  }
+  .bar:has(.hud > button) .bar-actions {
+    margin-left: auto;
   }
 }
 
@@ -124,6 +151,8 @@ h1 {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  /* Under the cards too: a thumb that lands on the stage never scrolls or zooms it. */
+  touch-action: none;
 }
 
 .stage:fullscreen {
@@ -219,7 +248,7 @@ p {
 
 .note {
   margin-top: 8px;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.4;
   color: var(--ink-2);
 }
@@ -242,6 +271,9 @@ p {
   box-shadow: 3px 3px 0 var(--ink);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .btn:active {
@@ -264,17 +296,20 @@ summary:focus-visible {
 
 .btn-primary {
   background: var(--tomato);
-  color: #fff;
+  /* Ink on tomato is 4.8:1; white on tomato is only 3.7:1. */
+  color: var(--ink);
   font-size: 17px;
   min-height: 52px;
   padding: 10px 22px;
 }
 
 .btn-quiet {
-  min-height: 36px;
-  padding: 4px 10px;
+  /* Small to look at, but still a 44 px target: the header buttons are pressed one-handed mid-take. */
+  min-height: 44px;
+  min-width: 44px;
+  padding: 4px 12px;
   border-width: 2px;
-  font-size: 12.5px;
+  font-size: 13px;
   box-shadow: 2px 2px 0 var(--ink);
 }
 
@@ -288,6 +323,16 @@ summary:focus-visible {
   align-items: center;
   gap: 10px;
   margin-top: 14px;
+}
+
+/* The line-up card is the one a small phone has to scroll, and its Start button must never be below
+   the fold: the button row sticks to the bottom of the card while the seats scroll under it. */
+.actions:has(> [data-action='start']) {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: 12px;
+  background: linear-gradient(to bottom, rgba(255, 253, 246, 0), var(--card) 10px);
 }
 
 /* ---- the line-up ---- */
@@ -316,12 +361,23 @@ summary:focus-visible {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .seat[aria-pressed='true'] {
   background: var(--seat);
   color: var(--seat-ink, #fff);
   box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* White on tomato, sky and leaf is 3.5 to 3.8:1, under the 4.5:1 that small text needs. Ink on them
+   is 4.7 to 5.1:1 and white stays on plum (5.7:1). The inline --seat-ink is bypassed on purpose. */
+.seat[aria-pressed='true'][data-seat='0'],
+.seat[aria-pressed='true'][data-seat='1'],
+.seat[aria-pressed='true'][data-seat='2'] {
+  color: var(--ink);
 }
 
 .seat[aria-pressed='false'] {
@@ -342,8 +398,9 @@ summary:focus-visible {
 
 .seat-name {
   font-family: var(--display);
-  /* The longest name, Methanobacterium, has to fit one line of a fifth of the card. */
-  font-size: clamp(11px, 1.55vw, 13.5px);
+  /* The longest name, Methanobacterium, has to fit one line of a fifth of the card; under 900 px the
+     tiles above are used instead, so this only runs on wide screens. */
+  font-size: clamp(12px, 1.2vw, 13.5px);
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: -0.01em;
@@ -358,9 +415,43 @@ summary:focus-visible {
 .seat-state {
   margin-top: 2px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+/* Under 900 px five tall columns are too narrow for "Methanobacterium": three tiles a row instead,
+   each with the key and state on top and the whole name on a line of its own. */
+@media (max-width: 899px) {
+  .seats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .seat {
+    flex-flow: row wrap;
+    justify-content: space-between;
+    gap: 4px 6px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .seat-key {
+    order: 1;
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+  .seat-state {
+    order: 2;
+    margin: 0;
+  }
+  .seat-name {
+    order: 3;
+    flex: 0 0 100%;
+    font-size: 14px;
+    letter-spacing: -0.02em;
+  }
+  .seat-instrument {
+    display: none;
+  }
 }
 
 /* A narrow phone: the line-up becomes five full-width rows. */
@@ -373,24 +464,27 @@ summary:focus-visible {
     gap: 6px;
   }
   .seat {
-    flex-direction: row;
+    flex-flow: row nowrap;
+    justify-content: flex-start;
     gap: 10px;
     padding: 6px 10px;
-    text-align: left;
   }
   .seat-key {
+    order: 0;
     flex: none;
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
   }
   .seat-name {
+    order: 0;
     flex: 1 1 auto;
     font-size: 15px;
-  }
-  .seat-instrument {
-    display: none;
+    letter-spacing: -0.01em;
   }
   .seat-state {
+    order: 0;
     flex: none;
-    margin: 0;
   }
 }
 
@@ -401,17 +495,21 @@ details {
 }
 
 summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   font-family: var(--display);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .band {
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -426,7 +524,7 @@ summary {
 
 .career {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink-2);
 }
 
@@ -463,12 +561,12 @@ summary {
 
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 9.5em) 1fr auto;
+  grid-template-columns: minmax(0, 10.5em) minmax(32px, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 5px 0;
   border-top: 1px solid rgba(12, 22, 56, 0.25);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .row-name {
@@ -497,7 +595,11 @@ summary {
 
 .row-count {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  /* Fits "100 of 111": every row gets the same count column, so the meters line up. */
+  min-width: 6.5em;
+  text-align: right;
 }
 
 .sr-only {
@@ -546,7 +648,96 @@ h3 {
 .room-url {
   margin: 6px 0 8px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   overflow-wrap: anywhere;
   color: var(--ink-2);
+}
+
+/* A phone held upright: the row dissolves so Start alone sticks, full width, under the seats. The
+   other buttons and the career line follow it as plain items. */
+@media (max-width: 560px) and (min-height: 461px) {
+  .actions:has(> [data-action='start']) {
+    display: contents;
+  }
+  .actions > [data-action='start'] {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    align-self: stretch;
+    margin-top: 12px;
+    /* A card-coloured collar so the seats scroll under the button, not through it. */
+    box-shadow: 3px 3px 0 var(--ink), 0 14px 0 6px var(--card);
+  }
+  .actions:has(> [data-action='start']) > :not([data-action='start']) {
+    align-self: flex-start;
+    margin-top: 14px;
+  }
+  .actions:has(> [data-action='start']) > .career {
+    margin-top: 10px;
+  }
+}
+
+/* ---- a phone held sideways: no height to spare ---- */
+@media (max-height: 460px) {
+  .overlay {
+    padding: 6px;
+  }
+  .card {
+    padding: 10px 14px;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  h2 {
+    font-size: 22px;
+  }
+  .card > .eyebrow {
+    display: none;
+  }
+  .lede {
+    margin-top: 4px;
+    font-size: 14px;
+  }
+  .seats {
+    margin-top: 8px;
+  }
+  .actions {
+    margin-top: 8px;
+  }
+  .btn-primary {
+    min-height: 48px;
+  }
+  details {
+    margin-top: 6px;
+  }
+  /* The results card: the verdict on the left, who played what on the right. */
+  .card:has(> .rows) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    column-gap: 18px;
+    align-content: start;
+  }
+  .card:has(> .rows) > * {
+    grid-column: 1;
+  }
+  .card:has(> .rows) > .rows {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    margin-top: 0;
+  }
+  .card:has(> .rows) > .actions {
+    grid-column: 1 / -1;
+  }
+  .score-number {
+    font-size: 40px;
+  }
+  .row {
+    padding: 3px 0;
+  }
+}
+
+/* The room panel on a short screen: the code beside the QR, the QR never under 120 px. */
+@media (max-height: 460px) {
+  .room {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
 }

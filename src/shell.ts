@@ -21,8 +21,8 @@ import { decodeTake, encodeTake, type Take } from './take';
 type Phase = 'lobby' | 'take' | 'results' | 'video' | 'shared';
 
 const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
-/** Mustard is too light for white text. */
-const SEAT_INKS = ['#fff', '#fff', '#fff', 'var(--ink)', '#fff'];
+/** White text only passes 4.5:1 on plum; the other four seat colours take ink. */
+const SEAT_INKS = ['var(--ink)', 'var(--ink)', 'var(--ink)', 'var(--ink)', '#fff'];
 
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
 const stage = $<HTMLElement>('stage');
@@ -209,7 +209,11 @@ async function openRoom() {
     room = null;
     roomState = 'failed';
   }
-  if (phase === 'lobby') show('lobby');
+  if (phase === 'lobby') {
+    show('lobby');
+    // On a landscape phone the code opens below the fold.
+    overlay.querySelector('.room')?.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 function closeRoom(next: 'closed' | 'down' = 'closed') {
@@ -286,9 +290,14 @@ function sharedCard(): string {
 
 /** Put a phase on screen: its card over the stage, or the bare stage with one small button. */
 function show(next: Phase) {
+  const same = phase === next;
   phase = next;
   const card = next === 'lobby' ? lobbyCard() : next === 'results' ? resultsCard() : next === 'shared' ? sharedCard() : '';
+  // Rebuilding the card must not throw a scrolled card back to its top.
+  const scrolled = same ? overlay.querySelector('.card')?.scrollTop ?? 0 : 0;
   overlay.innerHTML = card;
+  const fresh = overlay.querySelector('.card');
+  if (fresh && scrolled) fresh.scrollTop = scrolled;
   overlay.classList.toggle('open', card !== '');
   hud.innerHTML =
     next === 'take'
