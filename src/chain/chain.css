@@ -1,0 +1,136 @@
+/* Electron Chain's line-up: four microbe tiles, coloured like their seats in the band. */
+.chain-seats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border: 3px solid var(--ink);
+  background: var(--seat);
+  color: var(--seat-ink, var(--ink));
+  box-shadow: 3px 3px 0 var(--ink);
+  text-align: center;
+}
+
+.chain-fact {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+@media (max-width: 699px) {
+  .chain-seats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .chain-seats {
+    grid-template-columns: 1fr;
+  }
+  .chain-seat {
+    flex-direction: row;
+    flex-wrap: wrap;
+    text-align: left;
+    gap: 4px 10px;
+    padding: 6px 10px;
+  }
+  .chain-fact {
+    flex: 0 0 100%;
+  }
+}
+
+/* ---- MESSAi instrument theme: bakelite navy, brass trim, cream text, amber and phosphor accents ---- */
+body.chain {
+  --ink: #f1e6c8;
+  --ink-2: #c9bfa4;
+  --paper: #060a16;
+  --card: #1b2438;
+  --brass: #c9a86a;
+  --amber: #ffb547;
+  --display: Oswald, 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  background: var(--paper);
+  color: var(--ink);
+}
+body.chain .bar {
+  background: #0c1638;
+  border-bottom: 2px solid #8c7a5e;
+  color: var(--ink);
+}
+body.chain .overlay {
+  background: rgba(6, 10, 22, 0.78);
+}
+body.chain .card {
+  background: linear-gradient(180deg, #222c46, #1b2438);
+  border: 1.5px solid #8c7a5e;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(241, 230, 200, 0.08);
+  color: var(--ink);
+}
+body.chain h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+body.chain .eyebrow {
+  color: var(--amber);
+}
+body.chain .btn {
+  border: 1.5px solid #8c7a5e;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+  font-family: var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+body.chain .btn-primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #0c1638;
+  box-shadow: 0 0 18px rgba(255, 181, 71, 0.35);
+}
+body.chain .actions:has(> [data-action='start']) {
+  background: linear-gradient(to bottom, rgba(27, 36, 56, 0), #1b2438 10px);
+}
+body.chain .room-qr {
+  background: #f1e6c8;
+  border-radius: 8px;
+  padding: 6px;
+}
+body.chain .chain-seat {
+  background: rgba(6, 10, 22, 0.6);
+  color: var(--ink);
+  border: 1.5px solid var(--seat);
+  border-radius: 8px;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--seat) 30%, transparent);
+}
+body.chain .chain-seat .seat-name {
+  color: var(--seat);
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+body.chain .chain-seat .seat-key {
+  border-radius: 4px;
+  font-family: var(--mono);
+}
+body.chain .chain-seat .seat-state {
+  font-family: var(--mono);
+  color: var(--amber);
+}
+body.chain a {
+  color: var(--ink);
+}
