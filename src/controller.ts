@@ -24,10 +24,19 @@ type StateMessage = Extract<HostMessage, { k: 'state' }>;
 
 const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
 const SEAT_INKS = ['#fff', '#fff', '#fff', 'var(--ink)', '#fff'];
-/** Round trips at the start to settle the clock, then a slow heartbeat. */
+/**
+ * Round trips at the start to settle the clock, then a slow heartbeat in the
+ * lobby and on the results screen, and none during a take: the clock settled
+ * in the lobby holds for a few minutes, and a take is when the network should
+ * carry only presses. The heartbeat also tells a relay host the phone is still
+ * there; keep SYNC_EVERY_RELAY_MS well under RELAY_SILENT_MS (src/net/relay.ts),
+ * which the host does not apply during a take. On the relay every message is
+ * metered, so it beats slower.
+ */
 const SYNC_BURST = 6;
 const SYNC_BURST_MS = 150;
 const SYNC_EVERY_MS = 2500;
+const SYNC_EVERY_RELAY_MS = 10000;
 
 const seconds = () => performance.now() / 1000;
 const esc = (text: string) =>
@@ -73,6 +82,7 @@ export function startController(rawCode: string): void {
       <p class="eyebrow">${esc(fill(T.roomCode, { code: code ?? '' }))}</p>
       <h2>${T.pickHero}</h2>
       <ul class="seats phone-seats">${seats}</ul>
+      ${s.you === null ? '' : `<p class="note phone-fact">${esc(HEROES[s.you]!.short)}</p>`}
       <p class="lede" role="status">${s.you === null ? T.noSeat : T.waitHost}</p>
     </section>`);
   }
@@ -163,14 +173,17 @@ export function startController(rawCode: string): void {
     wire?.send({ k: 'ping', c: seconds() });
   }
 
-  function startSync() {
+  /** `burst`: settle the clock first (on connecting); otherwise only the heartbeat. */
+  function startSync(burst: boolean) {
     stopSync();
-    for (let i = 0; i < SYNC_BURST; i++) timers.push(setTimeout(ping, i * SYNC_BURST_MS));
+    const every = wire?.carrier === 'relay' ? SYNC_EVERY_RELAY_MS : SYNC_EVERY_MS;
+    const count = burst ? SYNC_BURST : 1;
+    for (let i = 0; i < count; i++) timers.push(setTimeout(ping, i * SYNC_BURST_MS));
     const beat = () => {
       ping();
-      timers.push(setTimeout(beat, SYNC_EVERY_MS));
+      timers.push(setTimeout(beat, every));
     };
-    timers.push(setTimeout(beat, SYNC_BURST * SYNC_BURST_MS));
+    timers.push(setTimeout(beat, (count - 1) * SYNC_BURST_MS + every));
   }
 
   function lost() {
@@ -199,6 +212,9 @@ export function startController(rawCode: string): void {
         else {
           const before = state;
           state = m;
+          // No pings during a take; the heartbeat resumes when it ends.
+          if (m.phase === 'take' && before?.phase !== 'take') stopSync();
+          else if (m.phase !== 'take' && before?.phase === 'take') startSync(false);
           // Repaint only when what is on screen would differ: a repaint mid-take would eat a tap.
           if (
             !before ||
@@ -211,7 +227,7 @@ export function startController(rawCode: string): void {
           }
         }
       });
-      startSync();
+      startSync(true);
     } catch {
       message(T.joinTitle, fill(T.joinFailed, { code }), true);
     }
@@ -232,7 +248,7 @@ export function startController(rawCode: string): void {
 
   // A phone that comes back from the lock screen has usually lost the channel.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && wire) ping();
+    if (!document.hidden && wire && state?.phase !== 'take') ping();
   });
   window.addEventListener('pagehide', () => wire?.close());
 

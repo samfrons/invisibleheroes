@@ -158,7 +158,7 @@ function joinUrl(code: string): string {
   url.hash = '';
   url.search = '';
   url.searchParams.set('join', code);
-  if (carrier === 'local') url.searchParams.set('net', 'local');
+  if (carrier !== 'peer') url.searchParams.set('net', carrier);
   return url.toString();
 }
 

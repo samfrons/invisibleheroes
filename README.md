@@ -147,6 +147,17 @@ opened). Two things keep a phone player on the beat despite the network:
 Everything that arrives from a phone is validated before use
 (`src/net/protocol.ts`).
 
+When the venue wifi keeps phones from reaching the big screen directly
+(common on event, school and hotel networks), phones fall back by themselves
+to a relay through Supabase Realtime Broadcast; presses still land on the beat
+because each one carries the time it was made. To turn the relay on, set
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the publishable key, never
+the service-role key) in `.env`, or in the host's environment settings; leave
+either one empty and the game uses direct connections only. One five-phone
+take costs about 2,500 relay messages, so the free plan's 2 million a month
+is roughly 800 takes. The relay's topics are public: anyone holding the key
+and a room's four-letter code could listen in or press for a player.
+
 ### Performance
 
 The stage is one canvas. Scenery that does not move is drawn once per resize
