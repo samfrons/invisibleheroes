@@ -24,6 +24,8 @@ export interface Microbe {
   move: Move;
   /** Picture in public/microbes/. */
   image: string;
+  /** Superpower in a few words: what this microbe can do. */
+  power: string;
   /** The learning card: why this microbe matters, in its own voice. */
   pitch: string;
 }
@@ -37,6 +39,7 @@ export const MICROBES: Microbe[] = [
     key: 'a',
     move: 'tap',
     image: '/microbes/geo.jpg',
+    power: 'Makes electricity with tiny nanowires',
     pitch:
       'I make electricity! I grow tiny wires and pass electrons out of my body. ' +
       'Scientists use me in fuel cells that clean dirty water and make power at the same time.',
@@ -49,6 +52,7 @@ export const MICROBES: Microbe[] = [
     key: 'f',
     move: 'double-tap',
     image: '/microbes/shiva.jpg',
+    power: 'Breathes metals and cleans up toxic waste',
     pitch:
       'I can breathe metals instead of oxygen! That helps clean toxic metals out of ' +
       'water and soil, and I can pass my electrons to electrodes too.',
@@ -61,6 +65,7 @@ export const MICROBES: Microbe[] = [
     key: 'j',
     move: 'hold',
     image: '/microbes/cable.jpg',
+    power: 'Builds living electric cables in seafloor mud',
     pitch:
       'Thousands of us join into one living electric cable, centimetres long, hidden ' +
       'in the mud on the seafloor. Scientists only discovered us in 2012!',
@@ -73,6 +78,7 @@ export const MICROBES: Microbe[] = [
     key: 'l',
     move: 'triple-tap',
     image: '/microbes/rhodo.jpg',
+    power: 'Runs on sunlight and makes hydrogen fuel',
     pitch:
       'I run on sunlight, like a plant, and I am purple! I can make hydrogen, ' +
       'a clean fuel for the future.',
