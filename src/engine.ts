@@ -75,17 +75,24 @@ function nextNote(run: Run, seat: number): Note | null {
   return index === undefined ? null : NOTES[index]!;
 }
 
-/** Settle everything whose time has come by `t`: scripted notes, and open notes now out of reach. */
-export function advance(run: Run, t: number): RunEvent[] {
+/**
+ * Settle everything whose time has come by `t`: scripted notes, and open notes now out of reach.
+ *
+ * `grace` (seconds per seat) holds a seat's open notes a little longer before they become
+ * misses. A press from a phone arrives after it was made, carrying the time it was made at;
+ * without the grace its note would already be written off.
+ */
+export function advance(run: Run, t: number, grace?: readonly number[]): RunEvent[] {
   const events: RunEvent[] = [];
   for (let seat = 0; seat < SEAT_COUNT; seat++) {
+    const reach = GOOD_S + (grace?.[seat] ?? 0);
     for (let note = nextNote(run, seat); note; note = nextNote(run, seat)) {
       const scripted = run.script[note.i]!;
       if (scripted !== PENDING) {
         if (note.t > t) break;
         events.push(settle(run, note, scripted as Grade, true));
       } else {
-        if (note.t >= t - GOOD_S) break;
+        if (note.t >= t - reach) break;
         events.push(settle(run, note, MISS, false));
       }
     }
@@ -146,6 +153,34 @@ export function tally(grades: Uint8Array, humans: readonly boolean[]): Tally {
   }
   const score = team.total === 0 ? 0 : (team.perfect + 0.7 * team.good) / team.total;
   return { seats, team, score };
+}
+
+/** What a note is worth as charge: a perfect fills the most. */
+export const chargeFor = (grade: number) => (grade === PERFECT ? 1 : grade === GOOD ? 0.7 : 0);
+/** The machine's seats charge at this share of a perfect player, so a good band can beat them. */
+export const HOUSE_RATE = 0.8;
+
+/**
+ * The battle: per seat, 0..1, how full its battery cell is. A cell is full when every note
+ * of the seat's part was a perfect. A machine seat's cell fills at the house rate.
+ */
+export function charges(grades: Uint8Array, humans: readonly boolean[]): number[] {
+  const earned = new Array<number>(SEAT_COUNT).fill(0);
+  const total = new Array<number>(SEAT_COUNT).fill(0);
+  for (const n of NOTES) {
+    total[n.seat]! += 1;
+    earned[n.seat]! += chargeFor(grades[n.i]!) * (humans[n.seat] ? 1 : HOUSE_RATE);
+  }
+  return earned.map((e, seat) => (total[seat] ? e / total[seat]! : 0));
+}
+
+/** The seat with the fullest cell (the lowest seat wins a tie), or null if nothing is charged. */
+export function leaderOf(charge: readonly number[]): number | null {
+  let best: number | null = null;
+  for (let seat = 0; seat < charge.length; seat++) {
+    if (charge[seat]! > 0 && (best === null || charge[seat]! > charge[best]!)) best = seat;
+  }
+  return best;
 }
 
 export type Rank = 'headliners' | 'tight' | 'garage' | 'inoculating';

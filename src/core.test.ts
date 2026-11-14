@@ -6,8 +6,11 @@ import {
   MISS,
   PENDING,
   PERFECT,
+  HOUSE_RATE,
   advance,
+  charges,
   createRun,
+  leaderOf,
   press,
   rankFor,
   scriptForTake,
@@ -158,5 +161,24 @@ describe('the shot list', () => {
   it('never closes in on a seat that landed nothing', () => {
     const grades = new Uint8Array(NOTES.length).fill(MISS);
     expect(planShots(grades).slice(4).every((s) => s === null)).toBe(true);
+  });
+});
+
+describe('the battery battle', () => {
+  it('fills a cell by the notes landed, and the machine at the house rate', () => {
+    const grades = new Uint8Array(NOTES.length).fill(PERFECT);
+    for (const i of NOTES_BY_SEAT[0]!) grades[i] = GOOD;
+    for (const i of NOTES_BY_SEAT[1]!) grades[i] = MISS;
+    const charge = charges(grades, [true, true, true, true, false]);
+    expect(charge[0]).toBeCloseTo(0.7, 6);
+    expect(charge[1]).toBe(0);
+    expect(charge[2]).toBeCloseTo(1, 6);
+    expect(charge[4]).toBeCloseTo(HOUSE_RATE, 6);
+    expect(leaderOf(charge)).toBe(2);
+  });
+
+  it('has no leader before anyone has charged, and the lower seat wins a tie', () => {
+    expect(leaderOf([0, 0, 0, 0, 0])).toBeNull();
+    expect(leaderOf([0.5, 0.9, 0.9, 0.1, 0])).toBe(1);
   });
 });

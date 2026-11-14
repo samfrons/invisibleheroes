@@ -1,0 +1,743 @@
+/*
+ * The page around the stage. Mobile first: the app is exactly one screen tall
+ * (100dvh), the stage takes whatever the header leaves, and nothing scrolls
+ * except a card that is taller than a small phone.
+ */
+:root {
+  --ink: #0c1638;
+  --ink-2: #33406b;
+  --paper: #faf6ea;
+  --card: #fffdf6;
+  --tomato: #e4572e;
+  --sky: #3f88c5;
+  --leaf: #3e9b63;
+  --mustard: #f2b134;
+  --plum: #8e5572;
+  --display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui,
+    sans-serif;
+  --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  /* No pull-to-refresh or rubber-banding under five thumbs, and nothing on the page itself scrolls:
+     the one thing that may scroll is a card taller than a small phone. */
+  overscroll-behavior: none;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* No double-tap zoom or tap delay anywhere; the canvas and the controller pad go further (none). */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  /* The visible viewport exactly, also while a mobile toolbar slides in or out. Each line is the
+     fallback for the one below it: vh (old), fill-available (Safari < 15.4), dvh (current). */
+  height: 100vh;
+  height: -webkit-fill-available;
+  height: 100dvh;
+  overflow: hidden;
+  /* Notch, rounded corners and home indicator: the header, the stage and the controller card all
+     stay inside, so the far columns are never under the cut-out. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 3px solid var(--ink);
+}
+
+.brand {
+  min-width: 0;
+}
+
+.brand-kicker {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(18px, 3.2vw, 26px);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.bar-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+/* A phone held upright: no kicker, small buttons that never wrap. */
+@media (max-width: 480px) {
+  .bar {
+    gap: 8px;
+    padding: 6px 10px;
+  }
+  .brand-kicker {
+    display: none;
+  }
+  h1 {
+    font-size: 16px;
+  }
+  .bar-actions {
+    gap: 6px;
+  }
+  .btn-quiet {
+    padding: 4px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+/* The narrowest phones (320 px): while a take runs the header holds three buttons, which leaves no
+   room for the title, so the title steps aside instead of being squeezed under them. */
+@media (max-width: 359px) {
+  .bar:has(.hud > button) .brand {
+    display: none;
+  }
+  .bar:has(.hud > button) .bar-actions {
+    margin-left: auto;
+  }
+}
+
+/* A landscape phone has no height to spare: the header shrinks to one line. */
+@media (max-height: 460px) {
+  .bar {
+    padding: 4px 10px;
+    border-bottom-width: 2px;
+  }
+  .brand-kicker {
+    display: none;
+  }
+  h1 {
+    font-size: 15px;
+  }
+}
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  outline: none;
+  background: var(--paper);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* Under the cards too: a thumb that lands on the stage never scrolls or zooms it. */
+  touch-action: none;
+}
+
+.stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+}
+
+#canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Every finger is a press: no scroll, no pinch, no double-tap zoom, no tap delay. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hud {
+  display: contents;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(250, 246, 234, 0.82);
+}
+
+.overlay.open {
+  display: flex;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px 18px;
+  border: 3px solid var(--ink);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--ink);
+  animation: rise 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+h2 {
+  margin: 2px 0 0;
+  font-family: var(--display);
+  font-size: clamp(22px, 4.4vw, 34px);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+p {
+  margin: 0;
+}
+
+.lede {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.note {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 3px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+.btn:focus-visible,
+.seat:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--sky);
+  outline-offset: 3px;
+}
+
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+.btn-primary {
+  background: var(--tomato);
+  /* Ink on tomato is 4.8:1; white on tomato is only 3.7:1. */
+  color: var(--ink);
+  font-size: 17px;
+  min-height: 52px;
+  padding: 10px 22px;
+}
+
+.btn-quiet {
+  /* Small to look at, but still a 44 px target: the header buttons are pressed one-handed mid-take. */
+  min-height: 44px;
+  min-width: 44px;
+  padding: 4px 12px;
+  border-width: 2px;
+  font-size: 13px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.btn-quiet:active {
+  transform: translate(2px, 2px);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* The line-up card is the one a small phone has to scroll, and its Start button must never be below
+   the fold: the button row sticks to the bottom of the card while the seats scroll under it. */
+.actions:has(> [data-action='start']) {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: 12px;
+  background: linear-gradient(to bottom, rgba(255, 253, 246, 0), var(--card) 10px);
+}
+
+/* ---- the line-up ---- */
+.seats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 100%;
+  padding: 10px 6px;
+  border: 3px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.seat[aria-pressed='true'] {
+  background: var(--seat);
+  color: var(--seat-ink, #fff);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* White on tomato, sky and leaf is 3.5 to 3.8:1, under the 4.5:1 that small text needs. Ink on them
+   is 4.7 to 5.1:1 and white stays on plum (5.7:1). The inline --seat-ink is bypassed on purpose. */
+.seat[aria-pressed='true'][data-seat='0'],
+.seat[aria-pressed='true'][data-seat='1'],
+.seat[aria-pressed='true'][data-seat='2'] {
+  color: var(--ink);
+}
+
+.seat[aria-pressed='false'] {
+  border-style: dashed;
+  color: var(--ink-2);
+}
+
+.seat-key {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid currentColor;
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.seat-name {
+  font-family: var(--display);
+  /* The longest name, Methanobacterium, has to fit one line of a fifth of the card; under 900 px the
+     tiles above are used instead, so this only runs on wide screens. */
+  font-size: clamp(12px, 1.2vw, 13.5px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.seat-instrument {
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+.seat-state {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Under 900 px five tall columns are too narrow for "Methanobacterium": three tiles a row instead,
+   each with the key and state on top and the whole name on a line of its own. */
+@media (max-width: 899px) {
+  .seats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .seat {
+    flex-flow: row wrap;
+    justify-content: space-between;
+    gap: 4px 6px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .seat-key {
+    order: 1;
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+  .seat-state {
+    order: 2;
+    margin: 0;
+  }
+  .seat-name {
+    order: 3;
+    flex: 0 0 100%;
+    font-size: 14px;
+    letter-spacing: -0.02em;
+  }
+  .seat-instrument {
+    display: none;
+  }
+}
+
+/* A narrow phone: the line-up becomes five full-width rows. */
+@media (max-width: 560px) {
+  .card {
+    padding: 12px;
+  }
+  .seats {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .seat {
+    flex-flow: row nowrap;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 6px 10px;
+  }
+  .seat-key {
+    order: 0;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+  }
+  .seat-name {
+    order: 0;
+    flex: 1 1 auto;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+  .seat-state {
+    order: 0;
+    flex: none;
+  }
+}
+
+details {
+  margin-top: 10px;
+  border-top: 2px solid var(--ink);
+  padding-top: 8px;
+}
+
+summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.band {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.band li + li {
+  margin-top: 6px;
+}
+
+.band cite {
+  font-style: normal;
+  color: var(--ink-2);
+}
+
+.career {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* ---- results ---- */
+.score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.score-number {
+  font-family: var(--display);
+  font-size: clamp(44px, 10vw, 72px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tag {
+  padding: 3px 8px;
+  border: 2px solid var(--ink);
+  background: var(--mustard);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.rows {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 10.5em) minmax(32px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(12, 22, 56, 0.25);
+  font-size: 14px;
+}
+
+.row-name {
+  font-family: var(--display);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meter {
+  display: flex;
+  height: 12px;
+  border: 2px solid var(--ink);
+  background: var(--card);
+}
+
+.meter-perfect {
+  background: var(--seat);
+}
+
+.meter-good {
+  background: var(--seat);
+  opacity: 0.5;
+}
+
+.row-count {
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: nowrap;
+  /* Fits "100 of 111": every row gets the same count column, so the meters line up. */
+  min-width: 6.5em;
+  text-align: right;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- the room phones join ---- */
+.room {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 2px solid var(--ink);
+}
+
+.room-qr {
+  flex: none;
+  width: clamp(120px, 26vw, 168px);
+  border: 3px solid var(--ink);
+  line-height: 0;
+}
+
+.room-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.room-text {
+  min-width: 0;
+}
+
+h3 {
+  margin: 2px 0 0;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.room-url {
+  margin: 6px 0 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+
+/* A phone held upright: the row dissolves so Start alone sticks, full width, under the seats. The
+   other buttons and the career line follow it as plain items. */
+@media (max-width: 560px) and (min-height: 461px) {
+  .actions:has(> [data-action='start']) {
+    display: contents;
+  }
+  .actions > [data-action='start'] {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    align-self: stretch;
+    margin-top: 12px;
+    /* A card-coloured collar so the seats scroll under the button, not through it. */
+    box-shadow: 3px 3px 0 var(--ink), 0 14px 0 6px var(--card);
+  }
+  .actions:has(> [data-action='start']) > :not([data-action='start']) {
+    align-self: flex-start;
+    margin-top: 14px;
+  }
+  .actions:has(> [data-action='start']) > .career {
+    margin-top: 10px;
+  }
+}
+
+/* ---- a phone held sideways: no height to spare ---- */
+@media (max-height: 460px) {
+  .overlay {
+    padding: 6px;
+  }
+  .card {
+    padding: 10px 14px;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  h2 {
+    font-size: 22px;
+  }
+  .card > .eyebrow {
+    display: none;
+  }
+  .lede {
+    margin-top: 4px;
+    font-size: 14px;
+  }
+  .seats {
+    margin-top: 8px;
+  }
+  .actions {
+    margin-top: 8px;
+  }
+  .btn-primary {
+    min-height: 48px;
+  }
+  details {
+    margin-top: 6px;
+  }
+  /* The results card: the verdict on the left, who played what on the right. */
+  .card:has(> .rows) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    column-gap: 18px;
+    align-content: start;
+  }
+  .card:has(> .rows) > * {
+    grid-column: 1;
+  }
+  .card:has(> .rows) > .rows {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    margin-top: 0;
+  }
+  .card:has(> .rows) > .actions {
+    grid-column: 1 / -1;
+  }
+  .score-number {
+    font-size: 40px;
+  }
+  .row {
+    padding: 3px 0;
+  }
+}
+
+/* The room panel on a short screen: the code beside the QR, the QR never under 120 px. */
+@media (max-height: 460px) {
+  .room {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+}
