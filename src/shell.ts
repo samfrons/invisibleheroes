@@ -6,6 +6,7 @@
  */
 import './style.css';
 import { charges, leaderOf, rankFor, tally } from './engine';
+import { learningCards, portrait } from './cards';
 import { ROLES, readout, report } from './kinetics';
 import { createConductor } from './game';
 import { openHostRoom, type HostRoom } from './net/host';
@@ -166,18 +167,13 @@ function lobbyCard(): string {
     const on = lineup[seat]! || phone;
     return `<li><button type="button" class="seat" data-seat="${seat}" aria-pressed="${on}"
         style="--seat:${SEAT_COLORS[seat]};--seat-ink:${SEAT_INKS[seat]}">
+        ${portrait(seat, 'seat-pic')}
         <span class="seat-key" aria-hidden="true">${touch ? seat + 1 : hero.key}</span>
         <span class="seat-name">${esc(hero.name)}</span>
         <span class="seat-instrument">${esc(hero.instrument)}</span>
         <span class="seat-state">${phone ? T.phone : on ? T.player : T.machine}</span>
       </button></li>`;
   }).join('');
-  const bios = HEROES.map(
-    (hero) =>
-      `<li><strong>${hero.latin ? `<i>${esc(hero.fullName)}</i>` : esc(hero.fullName)}</strong>, ${esc(
-        hero.instrument
-      )}. ${esc(hero.fact)} <cite>(${esc(hero.source)})</cite></li>`
-  ).join('');
   const hint = touch ? (players >= 3 ? T.turnPhone : '') : players === 1 ? T.soloKey : '';
   return `<section class="card" aria-labelledby="card-title">
     <p class="eyebrow">${T.eyebrow}</p>
@@ -193,11 +189,12 @@ function lobbyCard(): string {
       <span class="career">${esc(careerLine())}</span>
     </div>
     ${roomPanel()}
-    <details>
-      <summary>${T.meet}</summary>
-      <ul class="band">${bios}</ul>
+    <section class="meet" aria-labelledby="meet-title">
+      <h3 id="meet-title">${T.meet}</h3>
+      <p class="note meet-hint">${T.meetHint}</p>
+      ${learningCards()}
       <p class="note">${T.honest}</p>
-    </details>
+    </section>
   </section>`;
 }
 
@@ -295,7 +292,7 @@ function resultsCard(): string {
   const rows = HEROES.map((hero, seat) => {
     const human = take.humans[seat]!;
     return `<li class="row${seat === winner ? ' row-winner' : ''}" style="--seat:${SEAT_COLORS[seat]}">
-      <span class="row-name">${esc(hero.name)}${human ? '' : ` <small>${T.house}</small>`}</span>
+      <span class="row-name">${portrait(seat, 'row-pic', false)}<span class="row-text">${esc(hero.name)}${human ? '' : ` <small>${T.house}</small>`}</span></span>
       <span class="meter" aria-hidden="true">
         <span class="meter-perfect" style="width:${100 * charge[seat]!}%"></span>
       </span>
@@ -351,9 +348,12 @@ function show(next: Phase) {
   const card = next === 'lobby' ? lobbyCard() : next === 'results' ? resultsCard() : next === 'shared' ? sharedCard() : '';
   // Rebuilding the card must not throw a scrolled card back to its top.
   const scrolled = same ? overlay.querySelector('.card')?.scrollTop ?? 0 : 0;
+  const swiped = same ? overlay.querySelector('.learn')?.scrollLeft ?? 0 : 0;
   overlay.innerHTML = card;
   const fresh = overlay.querySelector('.card');
   if (fresh && scrolled) fresh.scrollTop = scrolled;
+  const row = overlay.querySelector('.learn');
+  if (row && swiped) row.scrollLeft = swiped;
   overlay.classList.toggle('open', card !== '');
   hud.innerHTML =
     next === 'take'

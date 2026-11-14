@@ -24,7 +24,7 @@ export interface Microbe {
   key: string;
   /** Signature move, used in the later "pattern twist" rounds. */
   move: Move;
-  /** Picture in public/microbes/, or null for a hero drawn by the game. */
+  /** Picture in public/microbes/, as a path relative to the site root (no leading slash), or null for a hero drawn by the game. */
   image: string | null;
   /** What this hero does in the fuel cell, in a few words. */
   job: string;
@@ -43,7 +43,7 @@ export const MICROBES: Microbe[] = [
     seat: 0,
     key: 'a',
     move: 'tap',
-    image: '/microbes/geo.jpg',
+    image: 'microbes/geo.jpg',
     job: 'Puts electrons straight on the anode',
     power: 'Makes electricity with tiny nanowires',
     pitch:
@@ -58,7 +58,7 @@ export const MICROBES: Microbe[] = [
     seat: 1,
     key: 'd',
     move: 'double-tap',
-    image: '/microbes/shiva.jpg',
+    image: 'microbes/shiva.jpg',
     job: 'Sends flavin shuttles: electrons land half a beat later',
     power: 'Breathes metals and cleans up toxic waste',
     pitch:
@@ -73,7 +73,7 @@ export const MICROBES: Microbe[] = [
     seat: 4,
     key: 'l',
     move: 'hold',
-    image: '/microbes/cable.jpg',
+    image: 'microbes/cable.jpg',
     job: 'Carries the current: lowers the resistance',
     power: 'Builds living electric cables in seafloor mud',
     pitch:
@@ -88,7 +88,7 @@ export const MICROBES: Microbe[] = [
     seat: 2,
     key: 'g',
     move: 'triple-tap',
-    image: '/microbes/rhodo.jpg',
+    image: 'microbes/rhodo.jpg',
     job: 'Turns sunlight into electrons: brighter in the chorus',
     power: 'Runs on sunlight and makes hydrogen fuel',
     pitch:
