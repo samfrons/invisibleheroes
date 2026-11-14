@@ -23,7 +23,7 @@ import { HEROES, RANKS, T, fill } from './strings';
 type StateMessage = Extract<HostMessage, { k: 'state' }>;
 
 const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
-const SEAT_INKS = ['var(--ink)', 'var(--ink)', 'var(--ink)', 'var(--ink)', '#fff'];
+const SEAT_INKS = new Array<string>(5).fill('var(--on-seat)');
 /**
  * Round trips at the start to settle the clock, then a slow heartbeat in the
  * lobby and on the results screen, and none during a take: the clock settled

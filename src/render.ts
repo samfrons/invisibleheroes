@@ -1,8 +1,15 @@
 /**
- * The canvas renderer. It keeps no game state: every picture follows from the
- * Frame, the tune (NOTES) and the clock, so a replay draws the same pictures.
- * The only state it holds is the drawing surface, the cached static scenery
- * and the video camera's eased position.
+ * The heads-up overlay. A transparent 2D canvas drawn over the 3D reactor
+ * scene, styled after the "Bacterial Blues" video: a coral Bauhaus frame,
+ * five bold lanes in the lower 55 % of the stage, a reticle and its shrinking
+ * approach ring per lane, gold electrons with a glow and a short trail, flat
+ * Bauhaus keys, a glyph per seat, an oscilloscope window, condensed all-caps
+ * words with a glow and a hard offset shadow, and in the video the
+ * letterbox, captions, lyric lines and cards.
+ *
+ * It keeps no game state: every picture follows from the Frame, the tune
+ * (NOTES) and the clock, so a replay draws the same pictures. The only state
+ * it holds is the drawing surface and the cached static layer.
  *
  * Hot-path rules (this runs at 60 fps on phones): no allocation per frame, no
  * closures, no gradients or font strings built per frame, no shadowBlur, no
@@ -10,25 +17,30 @@
  */
 import { GOOD, GOOD_S, MISS, PENDING, PERFECT, PERFECT_S } from './engine';
 import { computeLayout, pointAt, seatAt as layoutSeatAt, type Column, type Layout } from './layout';
-import { createPose, drawHero } from './render/heroes';
-import { drawScenery, fitFont, outlineWidth, padDepth } from './render/scenery';
+import { drawGlyph } from './render/heroes';
+import { drawScenery, fitFont, outlineWidth } from './render/scenery';
 import {
+  BLACK,
+  CORAL,
   CREAM,
-  CREAM_DARK,
-  INK,
-  PAPER,
-  SEAT_STRONG,
-  SPARK,
-  bodyFont,
+  CREAM_DIM,
+  DISPLAY_FAMILY,
+  DISPLAY_FONT_URL,
+  GLASS,
+  GOLD,
+  SCOPE_GREEN,
+  SEAT_GLOW,
+  TEAL,
   clamp01,
   displayFont,
   fade,
   hash,
+  monoFont,
 } from './render/style';
-import { BAR_S, BEAT_S, COUNT_IN_S, NOTES, SONG_S } from './score';
+import { BAR_S, BARS, BEAT_S, COUNT_IN_S, NOTES, SONG_S, STEP_S } from './score';
 import type { Frame, RenderLabels, Renderer } from './types';
 
-/** A ball shows this long before its note, rolling the whole chute. */
+/** A ball shows this long before its note, rolling the whole lane. */
 export const LEAD_S = BAR_S;
 /** The approach ring closes onto the target over this long. */
 const APPROACH_S = BEAT_S;
@@ -39,22 +51,69 @@ const TAIL_S = GOOD_S + FALL_S + 0.05;
 const WORD_S = 0.7;
 const PRESS_S = 0.14;
 const FINALE_S = 2.4;
+const CREDITS_AT = SONG_S + 0.4;
 const MAX_BALLS = 48;
+/** Trail dots behind each electron. */
+const TRAIL = 3;
 const TAU = Math.PI * 2;
 const SEATS_N = 5;
+/** The video's lyric lines run over the verse and the chorus. */
+const LYRIC_FROM_BAR = 4;
+const LYRIC_TO_BAR = BARS - 1;
+/** How much a non-featured lane fades during a video close-up. */
+const DIMMED = 0.28;
+/** Lyric and chant lines cycle through the three accents. */
+const LINE_COLOURS = [TEAL, CORAL, GOLD] as const;
+/** Condensed caps are letter-spaced. */
+const TRACKING = '0.04em';
 
 interface Fonts {
   take: string;
-  onAir: string;
   word: string;
   count: string;
-  countSmall: string;
+  leader: string;
   title: string;
   subtitle: string;
   caption: string;
   captionSmall: string;
   rec: string;
   end: string;
+  lyric: string;
+  chant: string;
+  winnerLabel: string;
+  winner: string;
+  creditName: string;
+  creditFact: string;
+}
+
+// ---- the display face ----------------------------------------------------------
+
+let fontState: 'idle' | 'loading' | 'ready' = 'idle';
+const fontListeners: (() => void)[] = [];
+
+/** Load the self-hosted display face once; listeners rebuild their cached layers. */
+function loadDisplayFont(onReady: () => void): void {
+  if (fontState === 'ready') return;
+  fontListeners.push(onReady);
+  if (fontState === 'loading') return;
+  if (typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return;
+  fontState = 'loading';
+  const face = new FontFace(DISPLAY_FAMILY, `url(${import.meta.env.BASE_URL}${DISPLAY_FONT_URL})`, {
+    weight: '700',
+    style: 'normal',
+    display: 'swap',
+  });
+  face
+    .load()
+    .then((loaded) => {
+      document.fonts.add(loaded);
+      fontState = 'ready';
+      for (const fn of fontListeners.splice(0)) fn();
+    })
+    .catch(() => {
+      // The fallback stack still reads fine; nothing to redo.
+      fontState = 'idle';
+    });
 }
 
 /** First index into NOTES with t >= time. */
@@ -69,26 +128,34 @@ function lowerBound(time: number): number {
   return lo;
 }
 
-function makeGear(teeth: number): Float32Array {
-  const out = new Float32Array(teeth * 4 * 2);
-  const step = TAU / teeth;
-  for (let k = 0; k < teeth; k++) {
-    const a = k * step;
-    const angles = [a - step * 0.3, a - step * 0.16, a + step * 0.16, a + step * 0.3];
-    const radii = [0.78, 1, 1, 0.78];
-    for (let j = 0; j < 4; j++) {
-      out[(k * 4 + j) * 2] = Math.cos(angles[j]!) * radii[j]!;
-      out[(k * 4 + j) * 2 + 1] = Math.sin(angles[j]!) * radii[j]!;
+/** Break `text` into lines no wider than `maxW` in the current font (resize time only). */
+function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines: number): string[] {
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? line + ' ' + word : word;
+    if (line && ctx.measureText(next).width > maxW && lines.length < maxLines - 1) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
     }
   }
-  return out;
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** Set letter-spacing where the browser supports it on canvas. */
+function track(ctx: CanvasRenderingContext2D, value: string): void {
+  if ('letterSpacing' in ctx) ctx.letterSpacing = value;
 }
 
 export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels): Renderer {
-  const ctx = canvas.getContext('2d', { alpha: false })!;
-  const scenery = document.createElement('canvas');
-  const sctx = scenery.getContext('2d', { alpha: false })!;
-  let sceneryKey = -1;
+  const ctx = canvas.getContext('2d')!;
+  const layer = document.createElement('canvas');
+  const lctx = layer.getContext('2d')!;
+  let layerKey = -1;
 
   let L: Layout = computeLayout(1, 1);
   let dpr = 1;
@@ -96,37 +163,161 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
   let lb = 0;
   const fonts: Fonts = {
     take: '',
-    onAir: '',
     word: '',
     count: '',
-    countSmall: '',
+    leader: '',
     title: '',
     subtitle: '',
     caption: '',
     captionSmall: '',
     rec: '',
     end: '',
+    lyric: '',
+    chant: '',
+    winnerLabel: '',
+    winner: '',
+    creditName: '',
+    creditFact: '',
   };
+  /** Pixel sizes of the big fonts, for their offset shadows and glows. */
+  let wordPx = 16;
+  let countPx = 60;
+  let lyricPx = 30;
+  let chantPx = 40;
+  let titlePx = 40;
+  let leaderPx = 60;
+  let endPx = 24;
+  let winnerPx = 40;
+  let captionPx = 24;
   const captionW = new Float64Array(SEATS_N);
-  let lampGlow: CanvasGradient | string = SPARK;
-  const gearShapes = [makeGear(10), makeGear(8)];
+  // Display strings, upper-cased once at resize.
+  let perfectText = '';
+  let goodText = '';
+  let missText = '';
+  let countText: string[] = [];
+  let lyricLines: string[][] = [];
+  let chantText: string[] = [];
+  let nameText: string[] = [];
+  let instrText: string[] = [];
+  let titleText = '';
+  let subtitleText = '';
+  let endText = '';
+  let winnerText = '';
+  let recText = '';
+  let factLines: string[][] = [];
+  let creditRowH = 0;
+  let creditFactH = 0;
+  let creditNameH = 0;
 
   // Scratch, reused every frame.
   const P = { x: 0, y: 0 };
-  const pose = createPose();
   const nextIdx = new Int32Array(SEATS_N);
   const ballXY = new Float32Array(SEATS_N * MAX_BALLS * 2);
+  const trailXY = new Float32Array(SEATS_N * MAX_BALLS * TRAIL * 2);
   const ballN = new Int32Array(SEATS_N);
   const fxIdx = new Int32Array(64);
   const fxStart = new Float64Array(64);
+  const seatAlpha = new Float32Array(SEATS_N);
   let fxN = 0;
   let takeNum = -1;
   let takeText = '';
 
-  // Video camera.
-  const cam = { x: 0, y: 0, s: 1 };
-  let camNow = -1;
-  let camMode = '';
+  function measureFonts(): void {
+    const w = L.w;
+    const h = L.h;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    track(ctx, TRACKING);
+    perfectText = labels.perfect.toUpperCase();
+    goodText = labels.good.toUpperCase();
+    missText = labels.miss.toUpperCase();
+    countText = labels.countIn.map((s) => s.toUpperCase());
+    chantText = (labels.chant ?? []).map((s) => s.toUpperCase());
+    nameText = labels.seats.map((s) => s.name.toUpperCase());
+    instrText = labels.seats.map((s) => s.instrument.toUpperCase());
+    titleText = labels.title.toUpperCase();
+    subtitleText = labels.subtitle.toUpperCase();
+    endText = labels.theEnd.toUpperCase();
+    winnerText = (labels.winner ?? '').toUpperCase();
+    recText = labels.rec.toUpperCase();
+    let longest = perfectText;
+    if (goodText.length > longest.length) longest = goodText;
+    if (missText.length > longest.length) longest = missText;
+    fonts.take = monoFont(Math.max(10, Math.min(L.headerH * 0.42, 14)), 600);
+    fonts.word = fitFont(ctx, longest, L.colW * 0.94, Math.max(12, Math.min(30, L.colW * 0.15, L.cols[0]!.ringR * 1.3)), displayFont);
+    wordPx = fontPx(fonts.word);
+    let longestCount = '';
+    for (const word of countText) if (word.length > longestCount.length) longestCount = word;
+    fonts.count = fitFont(ctx, longestCount, w * 0.8, Math.min(L.laneTop * 0.7, w * 0.32), displayFont);
+    countPx = fontPx(fonts.count);
+    fonts.leader = fitFont(ctx, longestCount, Math.min(w, h) * 0.36, Math.min(h, w) * 0.22, displayFont);
+    fonts.title = fitFont(ctx, labels.title.toUpperCase(), w * 0.84, Math.min(h * 0.11, 72), displayFont);
+    fonts.subtitle = fitFont(ctx, labels.subtitle.toUpperCase(), w * 0.8, Math.min(h * 0.03, 16), monoFont);
+    fonts.end = fitFont(ctx, labels.theEnd.toUpperCase(), w * 0.7, Math.min(h * 0.05, 30), displayFont);
+    titlePx = fontPx(fonts.title);
+    leaderPx = fontPx(fonts.leader);
+    endPx = fontPx(fonts.end);
+    fonts.rec = monoFont(Math.max(9, lb * 0.36), 700);
+    let longestName = '';
+    for (const s of nameText) if (s.length > longestName.length) longestName = s;
+    fonts.caption = fitFont(ctx, longestName, w * 0.6, Math.max(16, Math.min(h * 0.06, 40)), displayFont);
+    captionPx = fontPx(fonts.caption);
+    fonts.captionSmall = monoFont(Math.max(10, Math.min(h * 0.024, 14)), 500);
+    for (let i = 0; i < SEATS_N; i++) {
+      ctx.font = fonts.caption;
+      const a = ctx.measureText(nameText[i] ?? '').width;
+      ctx.font = fonts.captionSmall;
+      const b = ctx.measureText((labels.seats[i]?.instrument ?? '').toUpperCase()).width;
+      captionW[i] = Math.min(w * 0.9, Math.max(a, b));
+    }
+    // Lyric lines: as large as two lines across the stage allow.
+    const lyrics = labels.lyrics ?? [];
+    let px = Math.min(h * 0.085, w * 0.075, 64);
+    for (;;) {
+      fonts.lyric = displayFont(px);
+      ctx.font = fonts.lyric;
+      let fits = true;
+      lyricLines = [];
+      for (const line of lyrics) {
+        const lines = wrap(ctx, line.toUpperCase(), w * 0.88, 2);
+        for (const l of lines) if (ctx.measureText(l).width > w * 0.9) fits = false;
+        lyricLines.push(lines);
+      }
+      if (fits || px <= 12) break;
+      px -= 2;
+    }
+    lyricPx = px;
+    let longestChant = '';
+    for (const line of chantText) if (line.length > longestChant.length) longestChant = line;
+    fonts.chant = fitFont(ctx, longestChant, w * 0.9, Math.min(h * 0.13, 96), displayFont);
+    chantPx = fontPx(fonts.chant);
+    const cardW = Math.min(w * 0.94, 820);
+    fonts.winnerLabel = fitFont(ctx, (labels.winner ?? '').toUpperCase(), cardW * 0.8, Math.max(10, Math.min(h * 0.026, 15)), monoFont);
+    fonts.winner = fitFont(ctx, longestName, cardW * 0.8, Math.min(h * 0.085, 52), displayFont);
+    winnerPx = fontPx(fonts.winner);
+    const avail =
+      h - lb * 2 - Math.max(14, h * 0.035) - Math.max(14, h * 0.04) - Math.max(18, h * 0.06) - Math.max(22, h * 0.06) - 24;
+    creditNameH = Math.max(11, Math.min(20, (avail / 5) * 0.42));
+    creditFactH = Math.max(9, Math.min(13, (avail / 5) * 0.26));
+    fonts.creditName = displayFont(creditNameH);
+    fonts.creditFact = monoFont(creditFactH, 400);
+    ctx.font = fonts.creditFact;
+    track(ctx, '0px');
+    factLines = [];
+    let maxLines = 1;
+    for (let i = 0; i < SEATS_N; i++) {
+      const fact = labels.seats[i]?.fact ?? '';
+      const lines = fact ? wrap(ctx, fact, cardW * 0.86, 2) : [];
+      factLines.push(lines);
+      maxLines = Math.max(maxLines, lines.length);
+    }
+    creditRowH = creditNameH * 1.3 + creditFactH * 1.3 * maxLines + Math.max(4, h * 0.01);
+  }
+
+  /** The pixel size in a font string built by displayFont / monoFont. */
+  function fontPx(font: string): number {
+    const m = /(\d+)px/.exec(font);
+    return m ? Number(m[1]) : 16;
+  }
 
   function resize(width: number, height: number, ratio: number): void {
     dpr = Math.min(2, Math.max(1, ratio || 1));
@@ -134,198 +325,99 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
     const h = Math.max(1, Math.round(height));
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
-    scenery.width = canvas.width;
-    scenery.height = canvas.height;
+    layer.width = canvas.width;
+    layer.height = canvas.height;
     L = computeLayout(w, h);
     olw = outlineWidth(L);
     lb = Math.round(h * 0.075);
-    sceneryKey = -1;
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const words = [labels.perfect, labels.good, labels.miss];
-    let longest = '';
-    for (const word of words) if (word.length > longest.length) longest = word;
-    fonts.take = displayFont(Math.min(L.rowH * 0.42, w * 0.045));
-    fonts.onAir = fitFont(ctx, labels.onAir, L.onAir.w * 0.84, L.onAir.h * 0.56, displayFont);
-    fonts.word = fitFont(
-      ctx,
-      longest,
-      L.colW * 0.92,
-      Math.max(10, Math.min(24, L.colW * 0.12, L.cols[0]!.ringR * 0.9)),
-      displayFont
-    );
-    let longestCount = '';
-    for (const word of labels.countIn) if (word.length > longestCount.length) longestCount = word;
-    fonts.count = fitFont(ctx, longestCount, w * 0.8, Math.min(h * 0.3, w * 0.3), displayFont);
-    fonts.countSmall = fitFont(ctx, longestCount, w * 0.6, Math.min(h * 0.12, w * 0.14), displayFont);
-    fonts.title = fitFont(ctx, labels.title, w * 0.78, Math.min(h * 0.09, 60), displayFont);
-    fonts.subtitle = fitFont(ctx, labels.subtitle, w * 0.78, Math.min(h * 0.045, 24), bodyFont);
-    fonts.end = fitFont(ctx, labels.theEnd, w * 0.7, Math.min(h * 0.12, 80), displayFont);
-    fonts.rec = bodyFont(Math.max(9, lb * 0.42), 800);
-    let longestName = '';
-    for (const s of labels.seats) if (s.name.length > longestName.length) longestName = s.name;
-    fonts.caption = fitFont(ctx, longestName, w * 0.6, Math.max(14, Math.min(h * 0.06, 40)), displayFont);
-    fonts.captionSmall = bodyFont(Math.max(10, Math.min(h * 0.032, 20)), 700);
-    for (let i = 0; i < SEATS_N; i++) {
-      const s = labels.seats[i];
-      ctx.font = fonts.caption;
-      const a = ctx.measureText(s?.name ?? '').width;
-      ctx.font = fonts.captionSmall;
-      const b = ctx.measureText(s?.instrument ?? '').width;
-      captionW[i] = Math.min(w * 0.9, Math.max(a, b));
-    }
-    const g = ctx.createRadialGradient(L.lamp.x, L.lamp.y, L.lamp.r * 0.6, L.lamp.x, L.lamp.y, L.lamp.r * 3.4);
-    g.addColorStop(0, 'rgba(255, 215, 94, 0.95)');
-    g.addColorStop(1, 'rgba(255, 215, 94, 0)');
-    lampGlow = g;
+    layerKey = -1;
+    measureFonts();
+    loadDisplayFont(refreshFonts);
   }
 
-  function ensureScenery(mask: number, pads: boolean): void {
-    const key = mask | (pads ? 64 : 0);
-    if (key === sceneryKey) return;
-    sceneryKey = key;
-    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawScenery(sctx, L, labels, mask, pads);
+  /** The display face arrived: re-measure the text and repaint the cached layer. */
+  function refreshFonts(): void {
+    measureFonts();
+    layerKey = -1;
   }
 
-  function updateCamera(frame: Frame): void {
-    let tx = L.w / 2;
-    let ty = L.h / 2;
-    let ts = 1;
-    if (frame.mode === 'video' && frame.shot !== null && !frame.reducedMotion) {
-      const col = L.cols[frame.shot];
-      if (col) {
-        ts = 1.7;
-        tx = col.cx;
-        ty = (col.ringY - col.ringR * 2.5 + col.heroY) / 2;
-        const hw = L.w / (2 * ts);
-        const hh = L.h / (2 * ts);
-        tx = Math.min(L.w - hw, Math.max(hw, tx));
-        ty = Math.min(L.h - hh, Math.max(hh, ty));
-      }
-    }
-    const dt = frame.now - camNow;
-    if (camMode !== frame.mode || camNow < 0 || dt < 0 || dt > 0.5) {
-      cam.x = tx;
-      cam.y = ty;
-      cam.s = ts;
-    } else {
-      const k = 1 - Math.exp(-dt / 0.07);
-      cam.x += (tx - cam.x) * k;
-      cam.y += (ty - cam.y) * k;
-      cam.s += (ts - cam.s) * k;
-    }
-    camNow = frame.now;
-    camMode = frame.mode;
+  function ensureLayer(key: number, humans: number, remote: number, pads: boolean): void {
+    if (key === layerKey) return;
+    layerKey = key;
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    track(lctx, TRACKING);
+    drawScenery(lctx, L, labels, humans, remote, pads);
   }
 
-  // ---- header widgets -------------------------------------------------------
-
-  function drawHeaderLive(frame: Frame, clock: number): void {
-    const p = L.pipe;
-    const prog = clamp01(frame.t / SONG_S);
-    const inset = olw * 0.6 + 1;
-    const ix = p.x + p.h * 0.3;
-    const iw = p.w - p.h * 0.6;
-    const fw = iw * prog;
-    if (fw > 0.5) {
-      ctx.fillStyle = SPARK;
-      ctx.fillRect(ix, p.y + inset, fw, p.h - inset * 2);
-      // Electrons streaming along the filled part.
-      const spacing = Math.max(8, p.h * 1.1);
-      const off = (clock * spacing * 2.5) % spacing;
-      const r = Math.max(1.5, p.h * 0.16);
-      ctx.fillStyle = SEAT_STRONG[3];
-      ctx.beginPath();
-      for (let x = ix + off; x < ix + fw - r; x += spacing) {
-        ctx.moveTo(x + r, p.y + p.h / 2);
-        ctx.arc(x, p.y + p.h / 2, r, 0, TAU);
-      }
-      ctx.fill();
-    }
-
-    // Gears ratchet one tooth per beat.
-    const beats = clock / BEAT_S;
-    const whole = Math.floor(beats);
-    const frac = beats - whole;
-    const step = Math.min(1, frac / 0.22);
-    const eased = 1 - (1 - step) * (1 - step);
+  /**
+   * Display type as in the video: a hard dark offset shadow, a soft glow in
+   * the line's colour, then the colour itself.
+   */
+  function shout(text: string, x: number, y: number, colour: string, px: number): void {
+    const d = Math.max(2, px * 0.06);
+    ctx.fillStyle = BLACK;
+    ctx.fillText(text, x + d, y + d);
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * 0.35;
     ctx.lineJoin = 'round';
-    for (let g = 0; g < L.gears.length; g++) {
-      const gear = L.gears[g]!;
-      const shape = gearShapes[g]!;
-      const angle = gear.dir * (whole + eased) * (TAU / gear.teeth);
-      ctx.save();
-      ctx.translate(gear.x, gear.y);
-      ctx.rotate(angle);
-      ctx.scale(gear.r, gear.r);
-      ctx.beginPath();
-      const n = shape.length / 2;
-      ctx.moveTo(shape[0]!, shape[1]!);
-      for (let k = 1; k < n; k++) ctx.lineTo(shape[k * 2]!, shape[k * 2 + 1]!);
-      ctx.closePath();
-      ctx.moveTo(0.28, 0);
-      ctx.arc(0, 0, 0.28, 0, TAU, true);
-      ctx.fillStyle = g === 0 ? SEAT_STRONG[3] : SEAT_STRONG[1];
-      ctx.fill();
-      ctx.lineWidth = olw / gear.r;
-      ctx.strokeStyle = INK;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0.5, 0);
-      ctx.lineTo(-0.5, 0);
-      ctx.moveTo(0, 0.5);
-      ctx.lineTo(0, -0.5);
-      ctx.stroke();
-      ctx.restore();
-    }
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = Math.max(3, px * 0.16);
+    ctx.strokeText(text, x, y);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = colour;
+    ctx.fillText(text, x, y);
+  }
 
-    // Lamp and ON AIR sign.
-    const lit = frame.groove > 0.6;
-    const beatPulse = 1 - (frame.t / BEAT_S - Math.floor(frame.t / BEAT_S));
-    const glow = lit ? 0.55 + 0.45 * beatPulse * beatPulse : clamp01(frame.groove) * 0.35;
-    const lamp = L.lamp;
-    if (glow > 0.02) {
-      ctx.globalAlpha = glow;
-      ctx.fillStyle = lampGlow;
-      ctx.fillRect(lamp.x - lamp.r * 3.4, lamp.y - lamp.r * 3.4, lamp.r * 6.8, lamp.r * 6.8);
-      ctx.globalAlpha = 1;
-    }
-    ctx.fillStyle = INK;
-    ctx.fillRect(lamp.x - lamp.r * 0.55, lamp.y + lamp.r * 0.7, lamp.r * 1.1, lamp.r * 0.6);
-    ctx.beginPath();
-    ctx.arc(lamp.x, lamp.y, lamp.r, 0, TAU);
-    ctx.fillStyle = lit ? SPARK : CREAM_DARK;
-    ctx.fill();
-    ctx.lineWidth = olw;
-    ctx.strokeStyle = INK;
-    ctx.stroke();
-    if (lit) {
-      ctx.beginPath();
-      ctx.arc(lamp.x - lamp.r * 0.3, lamp.y - lamp.r * 0.3, lamp.r * 0.28, 0, TAU);
-      ctx.fillStyle = PAPER;
-      ctx.fill();
-    }
-    const s = L.onAir;
-    ctx.fillStyle = lit ? SEAT_STRONG[0] : CREAM_DARK;
-    ctx.fillRect(s.x, s.y, s.w, s.h);
-    ctx.strokeRect(s.x, s.y, s.w, s.h);
-    ctx.font = fonts.onAir;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = lit ? PAPER : INK;
-    ctx.globalAlpha = lit ? 1 : 0.45;
-    ctx.fillText(labels.onAir, s.x + s.w / 2, s.y + s.h / 2 + 1);
+  // ---- top band ---------------------------------------------------------------
+
+  function drawTopBand(frame: Frame): void {
+    // Song progress as a hairline just inside the frame's top edge.
+    const k = L.frameInset + 2;
+    const prog = clamp01(frame.t / SONG_S);
+    ctx.fillStyle = CREAM_DIM;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(k, k, L.w - k * 2, 2);
     ctx.globalAlpha = 1;
-
+    if (prog > 0) {
+      ctx.fillStyle = TEAL;
+      ctx.fillRect(k, k, (L.w - k * 2) * prog, 2);
+    }
     if (frame.takeNumber !== takeNum) {
       takeNum = frame.takeNumber;
-      takeText = labels.take + ' ' + String(takeNum);
+      takeText = labels.take.toUpperCase() + ' ' + String(takeNum);
     }
     ctx.font = fonts.take;
     ctx.textAlign = 'left';
-    ctx.fillStyle = INK;
-    ctx.fillText(takeText, L.takeX, L.takeY);
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = BLACK;
+    ctx.fillText(takeText, L.takeX + 5 + 1, L.takeY + 6 + 1);
+    ctx.fillStyle = CREAM;
+    ctx.fillText(takeText, L.takeX + 5, L.takeY + 6);
+  }
+
+  /** The oscilloscope: a green trace driven by the groove and the beat. */
+  function drawScope(frame: Frame, clock: number): void {
+    const s = L.scope;
+    const beat = clock / BEAT_S;
+    const kick = 1 - (beat - Math.floor(beat));
+    const amp = s.h * 0.36 * (0.2 + 0.8 * clamp01(frame.groove)) * (0.6 + 0.4 * kick * kick);
+    ctx.beginPath();
+    const n = 40;
+    for (let k = 0; k <= n; k++) {
+      const u = k / n;
+      const x = s.x + 3 + (s.w - 6) * u;
+      const y = s.y + s.h / 2 + Math.sin(u * 13 - clock * 8) * amp;
+      if (k === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = SCOPE_GREEN;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
   // ---- notes ----------------------------------------------------------------
@@ -337,15 +429,6 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
     return n.t;
   }
 
-  function pushBall(seat: number, x: number, y: number): void {
-    const k = ballN[seat]!;
-    if (k >= MAX_BALLS) return;
-    const o = (seat * MAX_BALLS + k) * 2;
-    ballXY[o] = x;
-    ballXY[o + 1] = y;
-    ballN[seat] = k + 1;
-  }
-
   function pushFx(i: number, start: number): void {
     if (fxN >= fxIdx.length) return;
     fxIdx[fxN] = i;
@@ -353,22 +436,24 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
     fxN++;
   }
 
-  /** Sort the visible notes into balls on chutes, bursts and falls. */
+  /** Sort the visible notes into electrons on lanes, bursts and falls. */
   function collectNotes(frame: Frame): void {
     const t = frame.t;
     ballN.fill(0);
     nextIdx.fill(-1);
     fxN = 0;
     const grades = frame.grades;
+    const gap = L.ballR * 1.5;
     for (let i = lowerBound(t - TAIL_S); i < NOTES.length; i++) {
       const n = NOTES[i]!;
       const dt = n.t - t;
       if (dt > LEAD_S) break;
-      const col = L.cols[n.seat]!;
+      const seat = n.seat;
+      const col = L.cols[seat]!;
       const g = grades[i] ?? PENDING;
-      if (nextIdx[n.seat]! < 0 && (dt > 0 || (g === PENDING && dt > -GOOD_S))) nextIdx[n.seat] = i;
+      if (nextIdx[seat]! < 0 && (dt > 0 || (g === PENDING && dt > -GOOD_S))) nextIdx[seat] = i;
       if (g === GOOD || g === PERFECT) {
-        const bs = burstStart(frame, i, n.seat);
+        const bs = burstStart(frame, i, seat);
         if (t >= bs) {
           if (t - bs < BURST_S) pushFx(i, bs);
           continue;
@@ -377,13 +462,31 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
         if (-dt - GOOD_S < FALL_S) pushFx(i, n.t + GOOD_S);
         continue;
       }
+      const k = ballN[seat]!;
+      if (k >= MAX_BALLS) continue;
+      const o = (seat * MAX_BALLS + k) * 2;
+      const to = (seat * MAX_BALLS + k) * TRAIL * 2;
       if (dt >= 0) {
-        pointAt(col.chute, col.chute.length * (1 - dt / LEAD_S), P);
-        pushBall(n.seat, P.x, P.y);
+        const s = col.chute.length * (1 - dt / LEAD_S);
+        pointAt(col.chute, s, P);
+        ballXY[o] = P.x;
+        ballXY[o + 1] = P.y;
+        for (let j = 0; j < TRAIL; j++) {
+          pointAt(col.chute, s - gap * (j + 1), P);
+          trailXY[to + j * 2] = P.x;
+          trailXY[to + j * 2 + 1] = P.y;
+        }
       } else {
         // Arrived but unsettled: it rolls just past the centre and waits.
-        pushBall(n.seat, col.ringX, col.ringY + col.ringR * 0.7 * (1 - Math.exp(dt / 0.06)));
+        const y = col.ringY + col.ringR * 0.7 * (1 - Math.exp(dt / 0.06));
+        ballXY[o] = col.ringX;
+        ballXY[o + 1] = y;
+        for (let j = 0; j < TRAIL; j++) {
+          trailXY[to + j * 2] = col.ringX;
+          trailXY[to + j * 2 + 1] = y;
+        }
       }
+      ballN[seat] = k + 1;
     }
   }
 
@@ -398,153 +501,188 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
       const col = L.cols[seat]!;
       const k = clamp01(dt / APPROACH_S);
       const human = frame.humans[seat] === true;
-      const r = col.ringR * (1 + 1.9 * k);
-      const lw = Math.max(2.5, col.ringR * 0.2);
-      ctx.globalAlpha = (calm ? 0.5 : human || frame.mode === 'video' ? 1 : 0.45) * (0.35 + 0.65 * (1 - k));
+      const r = col.ringR * (1 + 2 * k);
+      const lw = Math.max(4, col.ringR * 0.26);
+      const base = (calm ? 0.55 : human || frame.mode === 'video' ? 1 : 0.5) * seatAlpha[seat]!;
+      const a = base * (0.45 + 0.55 * (1 - k));
+      const colour = Math.abs(dt) <= PERFECT_S ? GOLD : SEAT_GLOW[seat]!;
       ctx.beginPath();
       ctx.arc(col.ringX, col.ringY, r, 0, TAU);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = lw + olw * 1.6;
+      ctx.globalAlpha = a * 0.85;
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = lw + 4;
       ctx.stroke();
-      ctx.strokeStyle = Math.abs(dt) <= PERFECT_S ? SPARK : SEAT_STRONG[seat]!;
+      ctx.globalAlpha = a * 0.25;
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = lw * 2.6;
+      ctx.stroke();
+      ctx.globalAlpha = a;
       ctx.lineWidth = lw;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
-  function drawBalls(): void {
+  /** Gold electrons, every seat: trail, glow, dark rim, gold body, hot core. */
+  function drawElectrons(): void {
     const r = L.ballR;
-    ctx.lineWidth = Math.max(1.2, olw * 0.8);
-    ctx.strokeStyle = INK;
     for (let seat = 0; seat < SEATS_N; seat++) {
       const n = ballN[seat]!;
       if (n === 0) continue;
-      const base = seat * MAX_BALLS * 2;
+      const a = seatAlpha[seat]!;
+      const base = seat * MAX_BALLS;
+      for (let j = 0; j < TRAIL; j++) {
+        const tr = r * (0.78 - j * 0.2);
+        ctx.beginPath();
+        for (let k = 0; k < n; k++) {
+          const o = ((base + k) * TRAIL + j) * 2;
+          const x = trailXY[o]!;
+          const y = trailXY[o + 1]!;
+          ctx.moveTo(x + tr, y);
+          ctx.arc(x, y, tr, 0, TAU);
+        }
+        ctx.globalAlpha = a * (0.5 - j * 0.14);
+        ctx.fillStyle = GOLD;
+        ctx.fill();
+      }
       ctx.beginPath();
       for (let k = 0; k < n; k++) {
-        const x = ballXY[base + k * 2]!;
-        const y = ballXY[base + k * 2 + 1]!;
+        const x = ballXY[(base + k) * 2]!;
+        const y = ballXY[(base + k) * 2 + 1]!;
+        ctx.moveTo(x + r * 2, y);
+        ctx.arc(x, y, r * 2, 0, TAU);
+      }
+      ctx.globalAlpha = a * 0.22;
+      ctx.fill();
+      ctx.beginPath();
+      for (let k = 0; k < n; k++) {
+        const x = ballXY[(base + k) * 2]!;
+        const y = ballXY[(base + k) * 2 + 1]!;
         ctx.moveTo(x + r, y);
         ctx.arc(x, y, r, 0, TAU);
       }
-      ctx.fillStyle = SEAT_STRONG[seat]!;
-      ctx.fill();
-      ctx.stroke();
-    }
-    // Highlights, all seats in one path.
-    ctx.beginPath();
-    const hr = r * 0.32;
-    for (let seat = 0; seat < SEATS_N; seat++) {
-      const n = ballN[seat]!;
-      const base = seat * MAX_BALLS * 2;
-      for (let k = 0; k < n; k++) {
-        const x = ballXY[base + k * 2]! - r * 0.35;
-        const y = ballXY[base + k * 2 + 1]! - r * 0.35;
-        ctx.moveTo(x + hr, y);
-        ctx.arc(x, y, hr, 0, TAU);
-      }
-    }
-    ctx.fillStyle = PAPER;
-    ctx.fill();
-  }
-
-  function drawFx(frame: Frame): void {
-    const t = frame.t;
-    const rm = frame.reducedMotion;
-    const calm = frame.mode === 'idle';
-    const sparks = rm ? 4 : calm ? 5 : 9;
-    for (let f = 0; f < fxN; f++) {
-      const i = fxIdx[f]!;
-      const n = NOTES[i]!;
-      const col: Column = L.cols[n.seat]!;
-      const age = t - fxStart[f]!;
-      const g = frame.grades[i]!;
-      if (g === MISS) {
-        // Falls past the ring with gravity, fading.
-        const a = fade(age, FALL_S);
-        const x = col.ringX + (hash(i, 7) - 0.5) * col.ringR * 2 * age;
-        const y = col.ringY + col.ringR * 0.7 + age * col.ringR * 2 + 0.5 * L.h * 2.6 * age * age;
-        ctx.globalAlpha = a;
-        ctx.beginPath();
-        ctx.arc(x, y, L.ballR, 0, TAU);
-        ctx.fillStyle = CREAM_DARK;
-        ctx.fill();
-        ctx.lineWidth = olw * 0.8;
-        ctx.strokeStyle = INK;
-        ctx.stroke();
-        continue;
-      }
-      const a = fade(age, BURST_S);
-      const u = age / BURST_S;
-      const perfect = g === PERFECT;
-      // Ring flash.
       ctx.globalAlpha = a;
-      ctx.beginPath();
-      ctx.arc(col.ringX, col.ringY, col.ringR * (1 + u * 1.3), 0, TAU);
-      ctx.strokeStyle = perfect ? SPARK : SEAT_STRONG[n.seat]!;
-      ctx.lineWidth = Math.max(2, col.ringR * 0.35 * (1 - u));
+      ctx.strokeStyle = BLACK;
+      ctx.lineWidth = 2.5;
       ctx.stroke();
-      if (age < 0.12) {
-        ctx.beginPath();
-        ctx.arc(col.ringX, col.ringY, col.ringR * 0.62, 0, TAU);
-        ctx.fillStyle = perfect ? SPARK : PAPER;
-        ctx.fill();
-      }
-      // Sparks.
+      ctx.fill();
       ctx.beginPath();
-      for (let k = 0; k < sparks; k++) {
-        const ang = ((k + hash(i, k) * 0.6) / sparks) * TAU;
-        const d0 = col.ringR * (1.1 + u * 1.6 * (0.6 + hash(k, i)));
-        const d1 = d0 + col.ringR * 0.45 * (1 - u);
-        const c = Math.cos(ang);
-        const s = Math.sin(ang);
-        ctx.moveTo(col.ringX + c * d0, col.ringY + s * d0);
-        ctx.lineTo(col.ringX + c * d1, col.ringY + s * d1);
+      const cr = r * 0.42;
+      for (let k = 0; k < n; k++) {
+        const x = ballXY[(base + k) * 2]! - r * 0.2;
+        const y = ballXY[(base + k) * 2 + 1]! - r * 0.2;
+        ctx.moveTo(x + cr, y);
+        ctx.arc(x, y, cr, 0, TAU);
       }
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = Math.max(1.5, olw);
-      ctx.stroke();
-      // The electron flies off to the lamp.
-      if (age > 0.04) {
-        const v = clamp01((age - 0.04) / (BURST_S - 0.04));
-        const e = v * v;
-        const cx = col.ringX;
-        const cy = L.lamp.y;
-        const x = (1 - e) * (1 - e) * col.ringX + 2 * (1 - e) * e * cx + e * e * L.lamp.x;
-        const y = (1 - e) * (1 - e) * col.ringY + 2 * (1 - e) * e * cy + e * e * L.lamp.y;
-        ctx.globalAlpha = 1 - v * 0.6;
-        ctx.beginPath();
-        ctx.arc(x, y, L.ballR * (1 - 0.4 * v), 0, TAU);
-        ctx.fillStyle = SPARK;
-        ctx.fill();
-        ctx.lineWidth = Math.max(1, olw * 0.7);
-        ctx.stroke();
-      }
+      ctx.fillStyle = CREAM;
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
+  /** A hit: the reticle fills, a gold burst, and the electron rises out of the lane. */
+  function drawHit(frame: Frame, col: Column, i: number, age: number): void {
+    const seat = col.seat;
+    const sa = seatAlpha[seat]!;
+    const a = fade(age, BURST_S) * sa;
+    const u = age / BURST_S;
+    const perfect = frame.grades[i] === PERFECT;
+    const sparks = frame.reducedMotion ? 4 : frame.mode === 'idle' ? 6 : 10;
+    // The reticle fills with the seat's colour (gold for a perfect).
+    ctx.beginPath();
+    ctx.arc(col.ringX, col.ringY, col.ringR * 0.9, 0, TAU);
+    ctx.globalAlpha = a * 0.85;
+    ctx.fillStyle = perfect ? GOLD : SEAT_GLOW[seat]!;
+    ctx.fill();
+    // Expanding gold ring.
+    ctx.beginPath();
+    ctx.arc(col.ringX, col.ringY, col.ringR * (1.1 + u * 1.5), 0, TAU);
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = Math.max(3, col.ringR * 0.3 * (1 - u)) + 3;
+    ctx.stroke();
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = Math.max(3, col.ringR * 0.3 * (1 - u));
+    ctx.stroke();
+    // Gold rays.
+    ctx.beginPath();
+    for (let k = 0; k < sparks; k++) {
+      const ang = ((k + hash(i, k) * 0.5) / sparks) * TAU;
+      const d0 = col.ringR * (1.3 + u * 1.8 * (0.6 + hash(k, i)));
+      const d1 = d0 + col.ringR * 0.6 * (1 - u);
+      const c = Math.cos(ang);
+      const s = Math.sin(ang);
+      ctx.moveTo(col.ringX + c * d0, col.ringY + s * d0);
+      ctx.lineTo(col.ringX + c * d1, col.ringY + s * d1);
+    }
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // The electron leaves the lane, rising into the reactor above.
+    if (age > 0.04) {
+      const v = clamp01((age - 0.04) / (BURST_S - 0.04));
+      const e = v * v;
+      const tx = L.w / 2 + (seat - 2) * L.w * 0.07;
+      const ty = L.laneTop * 0.55;
+      const x = (1 - e) * (1 - e) * col.ringX + 2 * (1 - e) * e * col.ringX + e * e * tx;
+      const y = (1 - e) * (1 - e) * col.ringY + 2 * (1 - e) * e * L.laneTop + e * e * ty;
+      const r = L.ballR * (1 - 0.4 * v);
+      ctx.globalAlpha = (1 - v * 0.7) * sa * 0.3;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 2, 0, TAU);
+      ctx.fillStyle = GOLD;
+      ctx.fill();
+      ctx.globalAlpha = (1 - v * 0.7) * sa;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.8, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** A miss: the electron goes dark and falls away with gravity. */
+  function drawMiss(col: Column, i: number, age: number): void {
+    const a = fade(age, FALL_S) * seatAlpha[col.seat]!;
+    const x = col.ringX + (hash(i, 7) - 0.5) * col.ringR * 2 * age;
+    const y = col.ringY + col.ringR * 0.7 + age * col.ringR * 2 + 0.5 * L.h * 1.6 * age * age;
+    ctx.globalAlpha = a * 0.85;
+    ctx.beginPath();
+    ctx.arc(x, y, L.ballR, 0, TAU);
+    ctx.fillStyle = CREAM_DIM;
+    ctx.fill();
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFx(frame: Frame): void {
+    const t = frame.t;
+    for (let f = 0; f < fxN; f++) {
+      const i = fxIdx[f]!;
+      const col = L.cols[NOTES[i]!.seat]!;
+      const age = t - fxStart[f]!;
+      if (frame.grades[i] === MISS) drawMiss(col, i, age);
+      else drawHit(frame, col, i, age);
+    }
+  }
+
   // ---- seats ----------------------------------------------------------------
 
-  function drawHeroes(frame: Frame): void {
+  function drawGlyphs(frame: Frame): void {
     const t = frame.t;
-    const idle = frame.reducedMotion ? 0 : frame.mode === 'idle' ? 0.6 : 1;
     for (let seat = 0; seat < SEATS_N; seat++) {
       const col = L.cols[seat]!;
       const sf = frame.seats[seat];
       const hitAge = sf && t >= sf.hitAt ? t - sf.hitAt : Infinity;
-      pose.hitAge = hitAge;
-      pose.hit = hitAge < 0.8 ? Math.exp(-hitAge * 7) : 0;
-      pose.missAge = sf && t >= sf.missAt ? t - sf.missAt : Infinity;
-      pose.pressAge = sf && t >= sf.pressAt ? t - sf.pressAt : Infinity;
-      pose.hitSeed = sf && hitAge < 10 ? hash(Math.round(sf.hitAt * 1000), seat) : 0;
-      pose.now = frame.now;
-      const b = frame.now * 0.31 + seat * 0.29;
-      pose.blink = b - Math.floor(b) < 0.035;
-      pose.idle = idle;
-      pose.lw = olw / (col.heroSize / 100);
-      drawHero(ctx, seat, col.heroX, col.heroY, col.heroSize, pose);
+      const missAge = sf && t >= sf.missAt ? t - sf.missAt : Infinity;
+      const pulse = hitAge < 0.6 ? Math.exp(-hitAge * 6) : 0;
+      const dim = missAge < 0.5 ? 1 - missAge / 0.5 : 0;
+      drawGlyph(ctx, seat, col.glyphX, col.glyphY, col.glyphSize, pulse, dim, Math.max(2.5, olw * 1.2), seatAlpha[seat]!);
     }
   }
 
@@ -553,8 +691,6 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
     ctx.font = fonts.word;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 4;
     for (let seat = 0; seat < SEATS_N; seat++) {
       const sf = frame.seats[seat];
       if (!sf) continue;
@@ -563,22 +699,14 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
       const missAge = t - sf.missAt;
       const showHit = hitAge >= 0 && hitAge < WORD_S;
       const showMiss = missAge >= 0 && missAge < WORD_S && !(showHit && hitAge < missAge);
-      const base = col.ringY - col.ringR * 1.7;
+      const base = col.ringY - col.ringR * 2.1;
       if (showHit) {
-        const word = sf.hitGrade === PERFECT ? labels.perfect : labels.good;
-        const y = base - hitAge * col.ringR * 2.2;
-        ctx.globalAlpha = fade(hitAge, WORD_S);
-        ctx.strokeStyle = PAPER;
-        ctx.strokeText(word, col.cx, y);
-        ctx.fillStyle = sf.hitGrade === PERFECT ? SEAT_STRONG[seat]! : INK;
-        ctx.fillText(word, col.cx, y);
+        const perfect = sf.hitGrade === PERFECT;
+        ctx.globalAlpha = fade(hitAge, WORD_S) * seatAlpha[seat]!;
+        shout(perfect ? perfectText : goodText, col.cx, base - hitAge * col.ringR * 2.2, perfect ? GOLD : TEAL, wordPx);
       } else if (showMiss) {
-        const y = base - missAge * col.ringR * 1.2;
-        ctx.globalAlpha = fade(missAge, WORD_S);
-        ctx.strokeStyle = PAPER;
-        ctx.strokeText(labels.miss, col.cx, y);
-        ctx.fillStyle = INK;
-        ctx.fillText(labels.miss, col.cx, y);
+        ctx.globalAlpha = fade(missAge, WORD_S) * seatAlpha[seat]!;
+        shout(missText, col.cx, base - missAge * col.ringR * 1.2, CORAL, wordPx);
       }
     }
     ctx.globalAlpha = 1;
@@ -586,22 +714,23 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
 
   function drawPressedPads(frame: Frame): void {
     const t = frame.t;
-    const depth = padDepth(L);
     for (let seat = 0; seat < SEATS_N; seat++) {
+      if (!frame.humans[seat]) continue;
       const sf = frame.seats[seat];
       if (!sf) continue;
       const age = t - sf.pressAt;
       if (!(age >= 0 && age < PRESS_S)) continue;
-      const d = depth * (1 - age / PRESS_S);
+      const k = 1 - age / PRESS_S;
       const p = L.cols[seat]!.pad;
-      // Clear the top strip the key leaves, then blit the key face lower down.
+      ctx.globalAlpha = 0.4 * k;
       ctx.fillStyle = CREAM;
-      ctx.fillRect(p.x, p.y - 0.5, p.w, d + 1);
-      ctx.drawImage(scenery, p.x * dpr, p.y * dpr, p.w * dpr, (p.h - depth) * dpr, p.x, p.y + d, p.w, p.h - depth);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = olw * 1.4;
-      ctx.strokeRect(p.x, p.y + d, p.w, p.h - depth);
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.globalAlpha = k;
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(p.x - 1.5, p.y - 1.5, p.w + 3, p.h + 3);
     }
+    ctx.globalAlpha = 1;
   }
 
   // ---- big moments ----------------------------------------------------------
@@ -609,148 +738,289 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
   function drawFinale(frame: Frame): void {
     const age0 = frame.t - SONG_S;
     if (age0 < 0 || age0 > FINALE_S + 1.3) return;
-    const per = frame.reducedMotion ? 4 : frame.mode === 'idle' ? 6 : 10;
+    const per = frame.reducedMotion ? 4 : frame.mode === 'idle' ? 6 : 12;
     const waves = 5;
-    const lamp = L.lamp;
+    const ox = L.w / 2;
+    const oy = L.laneTop * 0.5;
     const speed = Math.max(L.w, L.h) * 0.55;
-    const g = L.h * 1.3;
-    const r = L.ballR * 0.9;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = Math.max(1, olw * 0.7);
+    const g = L.h * 1.1;
+    const r = L.ballR;
+    ctx.fillStyle = GOLD;
     for (let wv = 0; wv < waves; wv++) {
       const a = age0 - wv * (FINALE_S / waves);
       if (a < 0 || a > 1.3) continue;
-      ctx.globalAlpha = 1 - a / 1.3;
-      for (let c = 0; c < SEATS_N; c++) {
-        ctx.beginPath();
-        for (let k = c; k < per; k += SEATS_N) {
-          const ang = Math.PI * (0.45 + 0.85 * hash(wv * 31 + k, 11));
-          const v = speed * (0.35 + 0.65 * hash(k, wv * 7 + 3));
-          const x = lamp.x + Math.cos(ang) * v * a;
-          const y = lamp.y + Math.sin(ang) * v * a + 0.5 * g * a * a;
-          ctx.moveTo(x + r, y);
-          ctx.arc(x, y, r, 0, TAU);
-        }
-        ctx.fillStyle = SEAT_STRONG[c]!;
-        ctx.fill();
-        ctx.stroke();
+      ctx.beginPath();
+      for (let k = 0; k < per; k++) {
+        const ang = hash(wv * 31 + k, 11) * TAU;
+        const v = speed * (0.3 + 0.7 * hash(k, wv * 7 + 3));
+        const x = ox + Math.cos(ang) * v * a;
+        const y = oy + Math.sin(ang) * v * a * 0.6 + 0.5 * g * a * a;
+        ctx.moveTo(x + r, y);
+        ctx.arc(x, y, r, 0, TAU);
       }
+      ctx.globalAlpha = 1 - a / 1.3;
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
-  function drawCount(frame: Frame, small: boolean, cy: number): void {
+  function countIndex(t: number): number {
+    const beats = (t + COUNT_IN_S) / BEAT_S;
+    const n = countText.length;
+    if (n === 0 || beats < 0) return -1;
+    return Math.min(n - 1, Math.floor(beats));
+  }
+
+  function drawCount(frame: Frame): void {
+    const idx = countIndex(frame.t);
+    if (idx < 0) return;
     const beats = (frame.t + COUNT_IN_S) / BEAT_S;
-    const n = labels.countIn.length;
-    if (n === 0 || beats < 0) return;
-    const idx = Math.min(n - 1, Math.floor(beats));
     const frac = beats - Math.floor(beats);
-    const word = labels.countIn[idx]!;
-    const pop = frame.reducedMotion ? 1 : 1 + 0.35 * (1 - frac) * (1 - frac) * (1 - frac);
+    const pop = frame.reducedMotion ? 1 : 1 + 0.3 * (1 - frac) * (1 - frac) * (1 - frac);
     ctx.save();
-    ctx.translate(L.w / 2, cy);
+    ctx.translate(L.w / 2, L.laneTop * 0.55);
     ctx.scale(pop, pop);
-    ctx.font = small ? fonts.countSmall : fonts.count;
+    ctx.font = fonts.count;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.globalAlpha = 1 - frac * 0.35;
-    ctx.lineWidth = small ? 6 : 10;
-    ctx.strokeStyle = PAPER;
-    ctx.strokeText(word, 0, 0);
-    ctx.fillStyle = idx === n - 1 ? SEAT_STRONG[0] : INK;
-    ctx.fillText(word, 0, 0);
+    ctx.globalAlpha = 1 - frac * 0.3;
+    const last = idx === countText.length - 1;
+    shout(countText[idx]!, 0, 0, last ? GOLD : LINE_COLOURS[idx % 3]!, countPx);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
 
-  function card(cx: number, cy: number, w: number, h: number): void {
-    ctx.fillStyle = INK;
-    ctx.fillRect(cx - w / 2 + 5, cy - h / 2 + 5, w, h);
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
-    ctx.lineWidth = Math.max(2, olw * 1.2);
-    ctx.strokeStyle = INK;
-    ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
-    const sh = Math.max(3, h * 0.05);
-    ctx.fillStyle = SEAT_STRONG[0];
-    ctx.fillRect(cx - w / 2 + olw, cy + h / 2 - sh * 3 - olw, w - olw * 2, sh);
-    ctx.fillStyle = SEAT_STRONG[3];
-    ctx.fillRect(cx - w / 2 + olw, cy + h / 2 - sh * 2 - olw, w - olw * 2, sh);
-    ctx.fillStyle = SEAT_STRONG[1];
-    ctx.fillRect(cx - w / 2 + olw, cy + h / 2 - sh - olw, w - olw * 2, sh);
+  /** A dark glass panel in a coral frame line. */
+  function panel(x: number, y: number, w: number, h: number, edge: string): void {
+    ctx.fillStyle = GLASS;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  /** Film leader during the video's count-in: rings, crosshair, sweep, count; title above. */
+  function drawLeader(frame: Frame): void {
+    const idx = countIndex(frame.t);
+    const w = L.w;
+    const h = L.h;
+    const titleY = lb + Math.max(20, h * 0.12);
+    ctx.font = fonts.title;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    shout(titleText, w / 2, titleY, CORAL, titlePx);
+    ctx.font = fonts.subtitle;
+    ctx.fillStyle = TEAL;
+    ctx.fillText(subtitleText, w / 2, titleY + titlePx * 0.75);
+    const top = titleY + titlePx * 1.1;
+    const cx = w / 2;
+    const cy = (top + h - lb) / 2;
+    const r = Math.min(w * 0.4, (h - lb - top) * 0.42);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.05, 0, TAU);
+    ctx.fillStyle = GLASS;
+    ctx.fill();
+    if (idx >= 0) {
+      const beats = (frame.t + COUNT_IN_S) / BEAT_S;
+      const frac = beats - Math.floor(beats);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * TAU);
+      ctx.closePath();
+      ctx.fillStyle = TEAL;
+      ctx.globalAlpha = 0.25;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.moveTo(cx + r * 0.78, cy);
+    ctx.arc(cx, cy, r * 0.78, 0, TAU);
+    ctx.moveTo(cx - r * 1.25, cy);
+    ctx.lineTo(cx + r * 1.25, cy);
+    ctx.moveTo(cx, cy - r * 1.15);
+    ctx.lineTo(cx, cy + r * 1.15);
+    ctx.strokeStyle = CORAL;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    if (idx >= 0) {
+      ctx.font = fonts.leader;
+      shout(countText[idx]!, cx, cy, idx === countText.length - 1 ? GOLD : CREAM, leaderPx);
+    }
+  }
+
+  /** Lyric lines, as in the video: huge condensed caps, lower third, one colour per line. */
+  function drawLyric(frame: Frame): void {
+    const n = lyricLines.length;
+    if (n === 0 || frame.shot !== null) return;
+    const bar = frame.t / BAR_S;
+    if (bar < LYRIC_FROM_BAR || bar >= LYRIC_TO_BAR) return;
+    const span = (LYRIC_TO_BAR - LYRIC_FROM_BAR) / n;
+    const idx = Math.min(n - 1, Math.floor((bar - LYRIC_FROM_BAR) / span));
+    const into = (bar - LYRIC_FROM_BAR - idx * span) * BAR_S;
+    const left = span * BAR_S - into;
+    const a = clamp01(Math.min(into, left) / 0.25);
+    if (a <= 0) return;
+    const lines = lyricLines[idx]!;
+    const lineH = lyricPx * 1.12;
+    const y0 = L.h - lb - Math.max(12, L.h * 0.06) - lineH * (lines.length - 0.5);
+    ctx.font = fonts.lyric;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = a;
+    const colour = LINE_COLOURS[idx % 3]!;
+    for (let k = 0; k < lines.length; k++) shout(lines[k]!, L.w / 2, y0 + k * lineH, colour, lyricPx);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawChant(frame: Frame): void {
+    if (chantText.length === 0) return;
+    const into = frame.t - (BARS - 1) * BAR_S;
+    if (into < 0 || frame.t >= CREDITS_AT) return;
+    const idx = Math.min(chantText.length - 1, Math.floor(into / (4 * STEP_S)));
+    const age = into - idx * 4 * STEP_S;
+    const pop = frame.reducedMotion ? 1 : 1 + 0.2 * Math.max(0, 1 - age / 0.15);
+    ctx.save();
+    ctx.translate(L.w / 2, L.h - lb - Math.max(12, L.h * 0.06) - chantPx * 0.6);
+    ctx.scale(pop, pop);
+    ctx.font = fonts.chant;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    shout(chantText[idx]!, 0, 0, LINE_COLOURS[(idx + 1) % 3]!, chantPx);
+    ctx.restore();
+  }
+
+  function drawCredits(frame: Frame): void {
+    const w = L.w;
+    const h = L.h;
+    const cw = Math.min(w * 0.94, 820);
+    const leader = frame.leader;
+    const winner = leader !== undefined && leader !== null ? labels.seats[leader] : undefined;
+    const contentH =
+      Math.max(14, h * 0.035) +
+      (winner ? Math.max(14, h * 0.04) + Math.max(18, h * 0.06) + Math.max(22, h * 0.06) : 0) +
+      creditNameH * 0.9 +
+      creditRowH * SEATS_N;
+    const room = h - lb * 2 - Math.max(12, h * 0.04);
+    const ch = Math.min(room, contentH + Math.max(30, h * 0.06));
+    const top = h / 2 - ch / 2;
+    const bottom = h / 2 + ch / 2;
+    ctx.globalAlpha = clamp01((frame.t - CREDITS_AT) / 0.4);
+    panel(w / 2 - cw / 2, top, cw, ch, CORAL);
+    const x0 = w / 2 - cw / 2 + Math.max(12, cw * 0.05);
+    ctx.textBaseline = 'middle';
+    let y = top + Math.max(16, h * 0.035);
+    ctx.textAlign = 'center';
+    ctx.font = fonts.end;
+    shout(endText, w / 2, y, CORAL, endPx);
+    if (winner && leader !== undefined && leader !== null) {
+      y += Math.max(14, h * 0.04);
+      ctx.font = fonts.winnerLabel;
+      ctx.fillStyle = TEAL;
+      ctx.fillText(winnerText, w / 2, y);
+      y += Math.max(18, h * 0.06);
+      ctx.font = fonts.winner;
+      shout(nameText[leader] ?? '', w / 2, y, GOLD, winnerPx);
+      y += Math.max(22, h * 0.06);
+    }
+    ctx.textAlign = 'left';
+    y += creditNameH * 0.9;
+    for (let i = 0; i < SEATS_N; i++) {
+      const lines = factLines[i];
+      const n = lines ? lines.length : 0;
+      ctx.fillStyle = SEAT_GLOW[i]!;
+      ctx.fillRect(x0, y - creditNameH * 0.5, 4, creditNameH + creditFactH * 1.3 * n);
+      ctx.font = fonts.creditName;
+      ctx.fillStyle = SEAT_GLOW[i]!;
+      ctx.fillText(nameText[i] ?? '', x0 + 12, y);
+      ctx.font = fonts.creditFact;
+      ctx.fillStyle = CREAM_DIM;
+      track(ctx, '0px');
+      for (let k = 0; k < n; k++) ctx.fillText(lines![k]!, x0 + 12, y + creditNameH * 0.95 + creditFactH * 1.3 * k);
+      track(ctx, TRACKING);
+      y += creditRowH;
+      if (y > bottom) break;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Close-up: brackets around the featured lane and a caption beside it. */
+  function drawCloseUp(seat: number): void {
+    const s = labels.seats[seat];
+    const col = L.cols[seat];
+    if (!s || !col) return;
+    const w = L.w;
+    const h = L.h;
+    const colour = SEAT_GLOW[seat]!;
+    const x0 = col.x0 + 4;
+    const x1 = col.x1 - 4;
+    const y0 = L.laneTop - 8;
+    const y1 = h - lb - 6;
+    const k = Math.min(28, L.colW * 0.22);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + k);
+    ctx.lineTo(x0, y0);
+    ctx.lineTo(x0 + k, y0);
+    ctx.moveTo(x1 - k, y0);
+    ctx.lineTo(x1, y0);
+    ctx.lineTo(x1, y0 + k);
+    ctx.moveTo(x0, y1 - k);
+    ctx.lineTo(x0, y1);
+    ctx.lineTo(x0 + k, y1);
+    ctx.moveTo(x1 - k, y1);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x1, y1 - k);
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    const pad = Math.max(8, h * 0.018);
+    const bw = (captionW[seat] ?? 100) + pad * 2 + 10;
+    const bh = Math.max(40, h * 0.12);
+    const leftSide = col.cx > w / 2;
+    const x = leftSide ? Math.max(10, col.x0 - bw - 12) : Math.min(w - bw - 10, col.x1 + 12);
+    const y = L.laneTop - bh - Math.max(8, h * 0.02);
+    panel(x, y, bw, bh, colour);
+    ctx.fillStyle = colour;
+    ctx.fillRect(x, y, 6, bh);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = fonts.caption;
+    shout(nameText[seat] ?? '', x + pad + 8, y + bh * 0.4, CREAM, captionPx);
+    ctx.font = fonts.captionSmall;
+    ctx.fillStyle = colour;
+    ctx.fillText(instrText[seat] ?? '', x + pad + 8, y + bh * 0.78);
   }
 
   function drawVideoOverlay(frame: Frame): void {
     const w = L.w;
     const h = L.h;
     const t = frame.t;
-    ctx.fillStyle = INK;
+    if (t < 0) drawLeader(frame);
+    else if (t >= CREDITS_AT) drawCredits(frame);
+    else {
+      drawChant(frame);
+      drawLyric(frame);
+      if (frame.shot !== null) drawCloseUp(frame.shot);
+    }
+    ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, w, lb);
     ctx.fillRect(0, h - lb, w, lb);
-
-    if (t < 0) {
-      const cw = Math.min(w * 0.88, 680);
-      const ch = Math.min(h * 0.34, 220);
-      const cy = h * 0.4;
-      card(w / 2, cy, cw, ch);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = INK;
-      ctx.font = fonts.title;
-      ctx.fillText(labels.title, w / 2, cy - ch * 0.16);
-      ctx.font = fonts.subtitle;
-      ctx.fillText(labels.subtitle, w / 2, cy + ch * 0.14);
-      drawCount(frame, true, Math.min(h - lb - h * 0.1, cy + ch / 2 + h * 0.13));
-    } else if (t > SONG_S + 0.4) {
-      const cw = Math.min(w * 0.8, 520);
-      const ch = Math.min(h * 0.26, 170);
-      card(w / 2, h / 2, cw, ch);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = INK;
-      ctx.font = fonts.end;
-      ctx.fillText(labels.theEnd, w / 2, h / 2 - ch * 0.08);
-    } else if (frame.shot !== null) {
-      const seat = frame.shot;
-      const s = labels.seats[seat];
-      if (s) {
-        const pad = Math.max(8, h * 0.018);
-        const bw = (captionW[seat] ?? 100) + pad * 2 + 6;
-        const bh = Math.max(36, h * 0.12);
-        const x = Math.max(8, w * 0.04);
-        const y = h - lb - bh - Math.max(8, h * 0.03);
-        ctx.fillStyle = INK;
-        ctx.fillRect(x + 4, y + 4, bw, bh);
-        ctx.fillStyle = PAPER;
-        ctx.fillRect(x, y, bw, bh);
-        ctx.fillStyle = SEAT_STRONG[seat]!;
-        ctx.fillRect(x, y, 6, bh);
-        ctx.lineWidth = Math.max(2, olw);
-        ctx.strokeStyle = INK;
-        ctx.strokeRect(x, y, bw, bh);
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = INK;
-        ctx.font = fonts.caption;
-        ctx.fillText(s.name, x + pad + 6, y + bh * 0.38);
-        ctx.font = fonts.captionSmall;
-        ctx.fillText(s.instrument, x + pad + 6, y + bh * 0.74);
-      }
-    }
-
     if (frame.recording && frame.now - Math.floor(frame.now) < 0.6) {
-      const r = lb * 0.18;
-      const x = Math.max(10, w * 0.025);
+      const r = lb * 0.16;
+      const x = Math.max(14, w * 0.025);
       ctx.beginPath();
       ctx.arc(x + r, lb / 2, r, 0, TAU);
-      ctx.fillStyle = SEAT_STRONG[0];
+      ctx.fillStyle = CORAL;
       ctx.fill();
       ctx.font = fonts.rec;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = PAPER;
-      ctx.fillText(labels.rec, x + r * 2 + 6, lb / 2 + 1);
+      ctx.fillStyle = CREAM;
+      ctx.fillText(recText, x + r * 2 + 6, lb / 2 + 1);
     }
   }
 
@@ -759,47 +1029,50 @@ export function createRenderer(canvas: HTMLCanvasElement, labels: RenderLabels):
   function draw(frame: Frame): void {
     const t = frame.t;
     const video = frame.mode === 'video';
-    let mask = 0;
-    for (let i = 0; i < SEATS_N; i++) if (frame.humans[i]) mask |= 1 << i;
-    ensureScenery(mask, !video);
-    updateCamera(frame);
-
-    // Shake: the finale's thump, and the drum in the video. Never with reduced motion.
-    let shake = 0;
-    if (!frame.reducedMotion && frame.mode !== 'idle') {
-      const fa = t - SONG_S;
-      if (fa >= 0 && fa < 0.8) shake = 6 * (1 - fa / 0.8);
-      const drum = frame.seats[3];
-      if (video && drum) {
-        const da = t - drum.hitAt;
-        if (da >= 0 && da < 0.12) shake = Math.max(shake, 2.5 * (1 - da / 0.12));
-      }
+    let humans = 0;
+    let remote = 0;
+    const rem = frame.remote;
+    for (let i = 0; i < SEATS_N; i++) {
+      if (frame.humans[i]) humans |= 1 << i;
+      if (rem && rem[i]) remote |= 1 << i;
     }
+    ensureLayer(humans | (remote << 5) | (video ? 0 : 1 << 10), humans, remote, !video);
+
+    // In a video close-up the featured lane stays lit and the others dim.
+    const shot = video && t >= 0 && t < CREDITS_AT ? frame.shot : null;
+    for (let i = 0; i < SEATS_N; i++) seatAlpha[i] = shot === null || shot === i ? 1 : DIMMED;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (shake > 0 || cam.s !== 1) {
-      ctx.fillStyle = PAPER;
-      ctx.fillRect(0, 0, L.w, L.h);
-      ctx.translate(L.w / 2 + Math.sin(frame.now * 71) * shake, L.h / 2 + Math.cos(frame.now * 53) * shake);
-      ctx.scale(cam.s, cam.s);
-      ctx.translate(-cam.x, -cam.y);
+    ctx.clearRect(0, 0, L.w, L.h);
+    if (shot === null) {
+      ctx.drawImage(layer, 0, 0, L.w, L.h);
+    } else {
+      // Blit the static layer a column at a time so each lane takes its own alpha.
+      for (let i = 0; i < SEATS_N; i++) {
+        const col = L.cols[i]!;
+        ctx.globalAlpha = seatAlpha[i]!;
+        const sx = col.x0 * dpr;
+        const sw = Math.min(layer.width - sx, L.colW * dpr);
+        ctx.drawImage(layer, sx, 0, sw, layer.height, col.x0, 0, sw / dpr, L.h);
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.drawImage(scenery, 0, 0, L.w, L.h);
 
     const clock = frame.mode === 'idle' ? frame.now : t;
-    drawHeaderLive(frame, clock);
-    if (!video) drawPressedPads(frame);
+    drawScope(frame, clock);
+    if (!video) {
+      drawTopBand(frame);
+      drawPressedPads(frame);
+    }
     collectNotes(frame);
     drawApproach(frame);
-    drawBalls();
-    drawHeroes(frame);
+    drawElectrons();
+    drawGlyphs(frame);
     drawFx(frame);
     drawWords(frame);
     drawFinale(frame);
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (video) drawVideoOverlay(frame);
-    else if (t < 0 && frame.mode === 'take') drawCount(frame, false, L.headerH + (L.h - L.headerH) * 0.4);
+    else if (t < 0 && frame.mode === 'take') drawCount(frame);
   }
 
   function seatAt(x: number, y: number): number | null {

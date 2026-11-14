@@ -1,30 +1,80 @@
-/** Colours, font stacks and small shared helpers for the renderer. */
+/**
+ * Colours, type and small shared helpers for the heads-up overlay.
+ *
+ * The look follows the "Bacterial Blues" video: a near-black charcoal stage,
+ * a bold Bauhaus frame, three confident accents (coral, teal, gold) plus an
+ * oscilloscope green used sparingly, thick clean strokes, huge condensed
+ * all-caps lines with a coloured glow and a hard dark offset shadow, and a
+ * mono face for small labels. The DOM shell and the 3D scene read these
+ * named values, so keep them plain hex strings.
+ */
 
+// ---- the palette (shared with the DOM shell and the 3D scene) ---------------
+
+/** Near-black charcoal: the stage, and every under-stroke and offset shadow. */
+export const CHARCOAL = '#1A1A1A';
+export const BLACK = '#111111';
+/** Text. 16.6:1 on CHARCOAL. */
+export const CREAM = '#FAFAF6';
+/** Quiet text (labels, facts). 6.6:1 on CHARCOAL. */
+export const CREAM_DIM = '#9AA0A6';
+export const CORAL = '#FF6B6B';
+export const TEAL = '#4ECDC4';
+/** The electron's gold. 13.5:1 on BLACK. */
+export const GOLD = '#FFD700';
+/** Oscilloscope green, used sparingly. */
+export const SCOPE_GREEN = '#00FF00';
+/** Glass panels behind cards. */
+export const GLASS = 'rgba(17, 17, 17, 0.86)';
+export const GLASS_DEEP = 'rgba(10, 10, 10, 0.92)';
+
+/** Seat hues: coral, teal, amber, green, violet. BLACK text on each is at least 6.8:1. */
+export const SEAT_CORAL = '#FF6B6B';
+export const SEAT_TEAL = '#4ECDC4';
+export const SEAT_AMBER = '#FFA62B';
+export const SEAT_GREEN = '#6BCB77';
+export const SEAT_VIOLET = '#A78BFA';
+export const SEAT_BASE = [SEAT_CORAL, SEAT_TEAL, SEAT_AMBER, SEAT_GREEN, SEAT_VIOLET] as const;
+/** On the dark stage the seat hues are already bright enough to glow. */
+export const SEAT_GLOW = SEAT_BASE;
+/** Light tints of the seat hues (DOM chips, 3D materials). */
+export const SEAT_TINT = ['#FFB3B3', '#A6E6E1', '#FFD39A', '#B4E5BB', '#D3C5FD'] as const;
+
+// ---- names other modules import (3D palette, DOM) -----------------------------
+
+/** MESSAI navy, still used by the 3D scene. */
 export const INK = '#0C1638';
-export const PAPER = '#FAF6EA';
-/** A deeper cream for the header band and the stage floor. */
-export const CREAM = '#F1E6C8';
-export const CREAM_DARK = '#E4D6B0';
-/** Pipe glass before the electrons fill it. */
-export const GLASS = '#E9E2CD';
-export const SPARK = '#FFD75E';
-export const MACHINE_FACE = '#E7E0CE';
+export const INK2 = '#33406B';
+export const TEAL_DARK = '#1F6B60';
+export const TEAL_ACCENT = TEAL;
+export const SPARK = GOLD;
+export const PAPER = CREAM;
+export const SEAT_STRONG = SEAT_BASE;
+export const STEEL = '#A7B1C2';
+export const COPPER = '#B8693A';
+export const SIGN_LIT = '#B4451C';
 
-/** Per seat: [strong, tint, pale panel]. */
-export const SEAT_STRONG = ['#E4572E', '#3F88C5', '#3E9B63', '#F2B134', '#8E5572'] as const;
-export const SEAT_TINT = ['#F4B19C', '#A6CBEA', '#A9D7B8', '#F8D891', '#CFA9BD'] as const;
-export const SEAT_PALE = ['#FBE6DC', '#E3EEF7', '#E2F1E6', '#FCF0D2', '#F2E6EC'] as const;
+// ---- type --------------------------------------------------------------------
 
-const DISPLAY = '"Arial Black", "Arial Rounded MT Bold", "Helvetica Neue", Arial, system-ui, sans-serif';
-const BODY = '"Trebuchet MS", "Helvetica Neue", Arial, system-ui, sans-serif';
+/** The display face (self-hosted, OFL): Oswald Bold, condensed caps. */
+export const DISPLAY_FAMILY = 'Oswald';
+export const DISPLAY_FONT_URL = 'fonts/oswald-latin-700-normal.woff2';
+const DISPLAY = `${DISPLAY_FAMILY}, "Arial Narrow", "Helvetica Neue Condensed", Impact, sans-serif`;
+const MONO = '"Roboto Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 export function displayFont(px: number): string {
-  return `900 ${Math.max(6, Math.round(px))}px ${DISPLAY}`;
+  return `700 ${Math.max(6, Math.round(px))}px ${DISPLAY}`;
 }
 
-export function bodyFont(px: number, weight = 700): string {
-  return `${weight} ${Math.max(6, Math.round(px))}px ${BODY}`;
+/** Small labels. */
+export function monoFont(px: number, weight = 500): string {
+  return `${weight} ${Math.max(6, Math.round(px))}px ${MONO}`;
 }
+
+/** Kept for callers of the earlier name: small labels are mono now. */
+export const bodyFont = monoFont;
+
+// ---- helpers -----------------------------------------------------------------
 
 /** A stable 0..1 pseudo-random number from two integers (no state, no allocation). */
 export function hash(a: number, b: number): number {

@@ -1,11 +1,16 @@
 /**
- * Stage geometry (pure). Everything is computed from the stage's CSS size, so
- * the same code lays out a wide desktop stage, a landscape phone and a
- * portrait phone. The renderer calls computeLayout() once per resize and keeps
- * the result; nothing in here runs per frame except pointAt() and seatAt().
+ * Stage geometry for the heads-up overlay (pure). The overlay sits on top of
+ * the 3D reactor: the top 45 % of the stage is left clear for it, and the five
+ * note lanes, their target reticles, the seat glyphs and the pads fill the
+ * lower 55 %. Everything is computed from the stage's CSS size, so the same
+ * code lays out a wide desktop stage, a landscape phone and a portrait phone.
+ * The renderer calls computeLayout() once per resize; only pointAt() and
+ * seatAt() run per frame.
  */
 
 export const COLUMNS = 5;
+/** Share of the stage height kept clear for the 3D scene. */
+export const CLEAR_TOP = 0.45;
 
 export interface Rect {
   x: number;
@@ -30,47 +35,41 @@ export interface Column {
   x0: number;
   x1: number;
   cx: number;
+  /** Where the lane begins, at the top of the lane area. */
   outletX: number;
   outletY: number;
   ringX: number;
   ringY: number;
   ringR: number;
-  /** Hero box: centred on heroX, standing on heroY (the floor), heroSize square. */
-  heroX: number;
-  heroY: number;
-  heroSize: number;
+  /** The seat's glyph: centred on glyphX, standing on glyphY, glyphSize square. */
+  glyphX: number;
+  glyphY: number;
+  glyphSize: number;
   pad: Rect;
   chute: Chute;
-}
-
-export interface Gear {
-  x: number;
-  y: number;
-  r: number;
-  teeth: number;
-  /** +1 or -1: meshed gears turn opposite ways. */
-  dir: number;
 }
 
 export interface Layout {
   w: number;
   h: number;
+  /** The thin top band (take number, song progress); seatAt() ignores it. */
   headerH: number;
+  /** Top of the lane area. */
+  laneTop: number;
   colW: number;
   /** Margin used around pads and boxes. */
   m: number;
-  pipe: Rect;
-  /** Height of the text row above the pipe. */
-  rowH: number;
   takeX: number;
   takeY: number;
-  lamp: { x: number; y: number; r: number };
-  onAir: Rect;
-  gears: Gear[];
-  /** Ball radius and track width, shared by all chutes. */
+  /** Ball radius and lane width, shared by all lanes. */
   ballR: number;
   trackW: number;
+  /** The line the glyphs stand on, just above the pads. */
   floorY: number;
+  /** Inset of the Bauhaus frame line from the stage edges. */
+  frameInset: number;
+  /** The oscilloscope window, top right, clear of the reactor and the pads. */
+  scope: Rect;
   cols: Column[];
 }
 
@@ -244,42 +243,28 @@ export function computeLayout(width: number, height: number): Layout {
   const w = Math.max(1, width);
   const h = Math.max(1, height);
   const colW = w / COLUMNS;
-  const headerH = Math.round(clamp(h * 0.12, 40, 84));
-  const R = h - headerH;
+  const headerH = Math.round(clamp(h * 0.06, 22, 40));
+  const laneTop = Math.round(h * CLEAR_TOP);
+  const R = h - laneTop;
   const m = clamp(Math.min(colW, R) * 0.05, 3, 10);
-  const padH = clamp(R * 0.13, 30, 72);
+  const padH = clamp(R * 0.16, 28, 64);
   const padY = h - padH - m;
   const floorY = padY - m;
-  const ringR = clamp(Math.min(colW * 0.2, R * 0.055), 8, 40);
-  const heroSize = Math.max(24, Math.min(colW * 0.86, R * 0.3));
-  const ringY = floorY - heroSize - m - ringR * 1.2;
-  const ballR = clamp(ringR * 0.4, 3.5, 11);
-  const trackW = ballR * 2 + 4;
-
-  // Header: a text row on top, the feed pipe along the bottom.
-  const pipeH = Math.max(10, headerH * 0.26);
-  const pipeBottom = headerH - Math.max(6, headerH * 0.12);
-  const pipe: Rect = { x: m, y: pipeBottom - pipeH, w: w - 2 * m, h: pipeH };
-  const rowH = pipe.y;
-  const lampR = Math.max(5, rowH * 0.28);
-  const lamp = { x: w - m - lampR - 2, y: rowH * 0.52, r: lampR };
-  const signH = Math.max(12, rowH * 0.52);
-  const signW = signH * 3.1;
-  const onAir: Rect = { x: lamp.x - lampR - 6 - signW, y: lamp.y - signH / 2, w: signW, h: signH };
-  const gr = Math.max(8, rowH * 0.48);
-  const gears: Gear[] = [
-    { x: w * 0.42, y: rowH * 0.62, r: gr, teeth: 10, dir: 1 },
-    { x: w * 0.42 + gr * 1.72, y: rowH * 0.42, r: gr * 0.72, teeth: 8, dir: -1 },
-  ];
+  const ringR = clamp(Math.min(colW * 0.17, R * 0.06), 7, 30);
+  const glyphSize = Math.max(16, Math.min(colW * 0.32, R * 0.13));
+  const ringY = floorY - glyphSize - m - ringR * 1.3;
+  const ballR = clamp(ringR * 0.4, 3, 9);
+  const trackW = ballR * 2 + 2;
+  const scopeW = clamp(w * 0.13, 84, 190);
 
   const cols: Column[] = [];
   for (let i = 0; i < COLUMNS; i++) {
     const x0 = i * colW;
     const x1 = x0 + colW;
     const cx = x0 + colW / 2;
-    const inset = Math.max(trackW / 2 + 2, colW * 0.1);
-    const outletY = headerH;
-    const straight = clamp((ringY - outletY) * 0.1, ringR * 1.6, ringR * 3);
+    const inset = Math.max(trackW / 2 + 3, colW * 0.12);
+    const outletY = laneTop;
+    const straight = clamp((ringY - outletY) * 0.12, ringR * 1.6, ringR * 3);
     const gap = Math.max(ballR * 2, (ringY - outletY) * 0.04);
     const spec: ChuteSpec = {
       cx,
@@ -307,9 +292,9 @@ export function computeLayout(width: number, height: number): Layout {
       ringX: cx,
       ringY,
       ringR,
-      heroX: cx,
-      heroY: floorY,
-      heroSize,
+      glyphX: cx,
+      glyphY: floorY,
+      glyphSize,
       pad: { x: x0 + m, y: padY, w: colW - 2 * m, h: padH },
       chute: b.build(),
     });
@@ -319,18 +304,16 @@ export function computeLayout(width: number, height: number): Layout {
     w,
     h,
     headerH,
+    laneTop,
     colW,
     m,
-    pipe,
-    rowH,
-    takeX: m + 2,
-    takeY: rowH * 0.55,
-    lamp,
-    onAir,
-    gears,
+    takeX: Math.max(8, m),
+    takeY: headerH * 0.5,
     ballR,
     trackW,
     floorY,
+    frameInset: Math.max(3, Math.min(8, m * 0.6)),
+    scope: { x: w - m - scopeW - 2, y: headerH * 0.5 + 4, w: scopeW, h: scopeW * 0.42 },
     cols,
   };
 }
@@ -367,7 +350,7 @@ export function pointAt(chute: Chute, s: number, out: { x: number; y: number }):
   out.y = pts[lo * 2 + 1]! + (pts[hi * 2 + 1]! - pts[lo * 2 + 1]!) * u;
 }
 
-/** The column under a CSS-pixel point, anywhere below the header band, or null. */
+/** The column under a CSS-pixel point, anywhere below the thin top band, or null. */
 export function seatAt(layout: Layout, x: number, y: number): number | null {
   if (!(y >= layout.headerH && y < layout.h && x >= 0 && x < layout.w)) return null;
   const seat = Math.floor(x / layout.colW);

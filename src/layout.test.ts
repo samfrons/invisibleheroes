@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COLUMNS, computeLayout, pointAt, seatAt } from './layout';
+import { CLEAR_TOP, COLUMNS, computeLayout, pointAt, seatAt } from './layout';
 
 const SIZES: [string, number, number][] = [
   ['wide desktop', 1400, 700],
@@ -19,17 +19,26 @@ describe.each(SIZES)('layout at %s (%ix%i)', (_name, w, h) => {
     expect(layout.cols[COLUMNS - 1]!.x1).toBeCloseTo(w, 6);
   });
 
-  it('stacks header, chute, ring, hero and pad without overlap', () => {
+  it('keeps the top of the stage clear and stacks lane, reticle, glyph and pad below it', () => {
+    expect(layout.laneTop).toBeCloseTo(h * CLEAR_TOP, 0);
+    expect(layout.headerH).toBeLessThan(layout.laneTop);
     for (const col of layout.cols) {
-      expect(col.outletY).toBe(layout.headerH);
-      expect(col.ringY - col.ringR).toBeGreaterThan(layout.headerH);
-      expect(col.ringY + col.ringR).toBeLessThan(col.heroY - col.heroSize);
-      expect(col.heroY).toBeLessThanOrEqual(col.pad.y);
+      expect(col.outletY).toBe(layout.laneTop);
+      expect(col.ringY - col.ringR).toBeGreaterThan(layout.laneTop);
+      expect(col.ringY + col.ringR).toBeLessThan(col.glyphY - col.glyphSize);
+      expect(col.glyphY).toBeLessThanOrEqual(col.pad.y);
       expect(col.pad.y + col.pad.h).toBeLessThanOrEqual(h);
-      expect(col.heroSize).toBeLessThanOrEqual(layout.colW);
+      expect(col.glyphSize).toBeLessThanOrEqual(layout.colW);
       expect(col.pad.x).toBeGreaterThanOrEqual(col.x0);
       expect(col.pad.x + col.pad.w).toBeLessThanOrEqual(col.x1);
     }
+  });
+
+  it('keeps the oscilloscope in the top band corner, clear of the lanes', () => {
+    const { scope } = layout;
+    expect(scope.x + scope.w).toBeLessThanOrEqual(w);
+    expect(scope.x).toBeGreaterThan(w / 2);
+    expect(scope.y + scope.h).toBeLessThan(layout.laneTop);
   });
 
   it('starts every chute at its outlet and ends it at its ring, inside its column', () => {
@@ -44,7 +53,7 @@ describe.each(SIZES)('layout at %s (%ix%i)', (_name, w, h) => {
       for (let i = 0; i < n; i++) {
         const x = pts[i * 2]!;
         const y = pts[i * 2 + 1]!;
-        // The whole track (not just its centre line) stays in the column.
+        // The whole lane (not just its centre line) stays in the column.
         expect(x - layout.trackW / 2).toBeGreaterThanOrEqual(col.x0);
         expect(x + layout.trackW / 2).toBeLessThanOrEqual(col.x1);
         expect(y).toBeGreaterThanOrEqual(col.outletY - 1e-6);
@@ -88,7 +97,6 @@ describe.each(SIZES)('layout at %s (%ix%i)', (_name, w, h) => {
         py = p.y;
       }
       expect(travelled / length).toBeGreaterThan(0.97);
-      // Clamped outside the ends.
       pointAt(col.chute, -50, p);
       expect(p.y).toBeCloseTo(col.outletY, 6);
       pointAt(col.chute, length + 50, p);
@@ -96,21 +104,16 @@ describe.each(SIZES)('layout at %s (%ix%i)', (_name, w, h) => {
     }
   });
 
-  it('maps column centres to their seat and the header to null', () => {
+  it('maps column centres to their seat, full height below the top band, and the band to null', () => {
     for (const col of layout.cols) {
       expect(seatAt(layout, col.cx, col.ringY)).toBe(col.seat);
       expect(seatAt(layout, col.cx, col.pad.y + col.pad.h / 2)).toBe(col.seat);
+      expect(seatAt(layout, col.cx, layout.laneTop / 2)).toBe(col.seat);
       expect(seatAt(layout, col.cx, layout.headerH + 1)).toBe(col.seat);
       expect(seatAt(layout, col.cx, layout.headerH / 2)).toBeNull();
     }
     expect(seatAt(layout, -1, h / 2)).toBeNull();
     expect(seatAt(layout, w, h / 2)).toBeNull();
     expect(seatAt(layout, w / 2, h)).toBeNull();
-  });
-
-  it('keeps the header widgets inside the header and apart', () => {
-    expect(layout.pipe.y + layout.pipe.h).toBeLessThanOrEqual(layout.headerH);
-    expect(layout.onAir.x).toBeGreaterThan(layout.gears[1]!.x + layout.gears[1]!.r);
-    expect(layout.lamp.x + layout.lamp.r).toBeLessThanOrEqual(w);
   });
 });

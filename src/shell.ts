@@ -17,12 +17,14 @@ import { dayKey, loadCareer, recordTake, saveCareer, type Career } from './stora
 import { HEROES, RANKS, T, fill, renderLabels } from './strings';
 import { createBandAudio } from './synth';
 import { decodeTake, encodeTake, type Take } from './take';
+import type { Centrepiece } from './three/centrepiece';
+import type { Renderer } from './types';
 
 type Phase = 'lobby' | 'take' | 'results' | 'video' | 'shared';
 
 const SEAT_COLORS = ['var(--tomato)', 'var(--sky)', 'var(--leaf)', 'var(--mustard)', 'var(--plum)'];
 /** White text only passes 4.5:1 on plum; the other four seat colours take ink. */
-const SEAT_INKS = ['var(--ink)', 'var(--ink)', 'var(--ink)', 'var(--ink)', '#fff'];
+const SEAT_INKS = new Array<string>(5).fill('var(--on-seat)');
 
 const $ = <E extends HTMLElement>(id: string) => document.getElementById(id) as E;
 const stage = $<HTMLElement>('stage');
@@ -37,7 +39,38 @@ const touch = window.matchMedia('(pointer: coarse)').matches;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const audio = createBandAudio();
-const renderer = createRenderer(canvas, renderLabels(touch));
+const lanes = createRenderer(canvas, renderLabels(touch));
+
+/**
+ * The stage is two layers: a 3D set (the fuel cell and its battery) and, over it, the note
+ * lanes. The set is fetched after the page is up; until it arrives, or where there is no
+ * WebGL, the lanes play on the bare navy stage.
+ */
+let scene: Centrepiece | null = null;
+let stageSize = { width: 0, height: 0, dpr: 1 };
+const renderer: Renderer = {
+  resize(width, height, dpr) {
+    stageSize = { width, height, dpr };
+    lanes.resize(width, height, dpr);
+    scene?.resize(width, height, dpr);
+  },
+  draw(frame) {
+    scene?.draw(frame);
+    lanes.draw(frame);
+  },
+  seatAt: (x, y) => lanes.seatAt(x, y),
+};
+// ?scene=off leaves the 3D set out: for slow machines and for scripted play-throughs.
+const sceneWanted = new URLSearchParams(location.search).get('scene') !== 'off';
+void (sceneWanted ? import('./three/centrepiece') : Promise.reject(new Error('scene off')))
+  .then(({ createCentrepiece }) =>
+    createCentrepiece($<HTMLCanvasElement>('scene'), { quality: touch ? 'low' : 'high' })
+  )
+  .then((made) => {
+    scene = made;
+    if (scene && stageSize.width > 0) scene.resize(stageSize.width, stageSize.height, stageSize.dpr);
+  })
+  .catch(() => undefined);
 
 let career: Career = loadCareer();
 let lineup: boolean[] = [...career.lineup];

@@ -4,20 +4,38 @@
  * except a card that is taller than a small phone.
  */
 :root {
-  --ink: #0c1638;
-  --ink-2: #33406b;
-  --paper: #faf6ea;
-  --card: #fffdf6;
-  --tomato: #e4572e;
-  --sky: #3f88c5;
-  --leaf: #3e9b63;
-  --mustard: #f2b134;
-  --plum: #8e5572;
-  --display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Trebuchet MS', system-ui,
-    sans-serif;
+  /*
+   * The Bacterial Blues stage: charcoal, a Bauhaus frame, and three accents used boldly
+   * (coral, teal, gold). --ink is the colour of type and rules on the dark cards; --on-seat is
+   * the near-black that sits on a solid block of colour.
+   */
+  --space: #0a0a0a;
+  --paper: #121212;
+  --card: #171717;
+  --ink: #f2efe6;
+  --ink-2: #b9b6ad;
+  --on-seat: #0a0a0a;
+  --coral: #ff6b6b;
+  --teal: #4ecdc4;
+  --gold: #ffd700;
+  --teal-bright: #4ecdc4;
+  /* The five seats, in the names the first version gave them. */
+  --tomato: #ff6b6b;
+  --sky: #4ecdc4;
+  --leaf: #7ee36b;
+  --mustard: #ffc93c;
+  --plum: #b18cff;
+  --display: 'Oswald', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
   --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  color-scheme: light;
+  --mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+@font-face {
+  font-family: 'Oswald';
+  src: url('/fonts/oswald-latin-700-normal.woff2') format('woff2');
+  font-weight: 400 900;
+  font-display: swap;
 }
 
 * {
@@ -160,6 +178,16 @@ h1 {
   height: 100vh;
 }
 
+/* The 3D set, behind the note lanes. It takes no input: every press belongs to the canvas above. */
+#scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 #canvas {
   position: absolute;
   inset: 0;
@@ -183,7 +211,7 @@ h1 {
   align-items: center;
   justify-content: center;
   padding: 10px;
-  background: rgba(250, 246, 234, 0.82);
+  background: rgba(7, 11, 31, 0.72);
 }
 
 .overlay.open {
@@ -295,9 +323,9 @@ summary:focus-visible {
 }
 
 .btn-primary {
-  background: var(--tomato);
-  /* Ink on tomato is 4.8:1; white on tomato is only 3.7:1. */
-  color: var(--ink);
+  /* MESSAI's accent: white on the teal is 4.7:1. */
+  background: var(--teal);
+  color: #fff;
   font-size: 17px;
   min-height: 52px;
   padding: 10px 22px;
@@ -332,7 +360,7 @@ summary:focus-visible {
   bottom: 0;
   z-index: 1;
   padding-top: 12px;
-  background: linear-gradient(to bottom, rgba(255, 253, 246, 0), var(--card) 10px);
+  background: linear-gradient(to bottom, rgba(23, 23, 23, 0), var(--card) 10px);
 }
 
 /* ---- the line-up ---- */
@@ -372,12 +400,9 @@ summary:focus-visible {
   box-shadow: 3px 3px 0 var(--ink);
 }
 
-/* White on tomato, sky and leaf is 3.5 to 3.8:1, under the 4.5:1 that small text needs. Ink on them
-   is 4.7 to 5.1:1 and white stays on plum (5.7:1). The inline --seat-ink is bypassed on purpose. */
-.seat[aria-pressed='true'][data-seat='0'],
-.seat[aria-pressed='true'][data-seat='1'],
-.seat[aria-pressed='true'][data-seat='2'] {
-  color: var(--ink);
+/* Near-black on every seat colour: the five are all bright (7:1 or better against #0a0a0a). */
+.seat[aria-pressed='true'][data-seat] {
+  color: var(--on-seat);
 }
 
 .seat[aria-pressed='false'] {
@@ -740,4 +765,101 @@ h3 {
     margin-top: 8px;
     padding-top: 8px;
   }
+}
+
+/* ---- the Bacterial Blues dressing ---- */
+.bar {
+  background: var(--space);
+  border-bottom-color: var(--coral);
+}
+
+.bar .brand-kicker {
+  color: var(--teal);
+}
+
+h1,
+h2,
+h3,
+.btn,
+.seat-name,
+.row-name,
+.score-number,
+summary {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+h2 {
+  color: var(--gold);
+  text-shadow: 0 0 18px rgba(255, 215, 0, 0.35), 3px 3px 0 #000;
+}
+
+.overlay {
+  background: rgba(10, 10, 10, 0.78);
+}
+
+.card,
+.phone-card {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 1px #000, 8px 8px 0 var(--teal);
+}
+
+/* Buttons are flat blocks of colour with black condensed caps, like a control panel. */
+.btn {
+  border-color: #000;
+  background: var(--coral);
+  color: var(--on-seat);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.btn-primary {
+  background: var(--teal);
+  color: var(--on-seat);
+}
+
+.btn-quiet {
+  box-shadow: 2px 2px 0 #000;
+}
+
+.seat {
+  border-color: var(--seat);
+  background: transparent;
+  color: var(--ink);
+}
+
+.seat[aria-pressed='true'] {
+  background: var(--seat);
+  color: var(--on-seat);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--seat) 55%, transparent);
+}
+
+.seat[aria-pressed='false'] {
+  color: var(--ink-2);
+}
+
+.tag {
+  background: var(--gold);
+  color: var(--on-seat);
+  border-color: #000;
+}
+
+.meter {
+  border-color: var(--ink-2);
+  background: #000;
+}
+
+.row-winner .row-name {
+  color: var(--gold);
+}
+
+.room-qr {
+  border-color: var(--teal);
+}
+
+.eyebrow,
+.career,
+.room-url {
+  color: var(--teal);
 }

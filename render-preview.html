@@ -3,15 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Renderer preview</title>
+    <title>Overlay preview</title>
     <style>
-      html, body { margin: 0; padding: 0; background: #0C1638; }
-      canvas { display: block; }
-      #stats { position: fixed; right: 4px; bottom: 4px; font: 12px monospace; color: #FAF6EA; }
+      html, body { margin: 0; padding: 0; background: #111111; }
+      /* A stand-in for the 3D stage the overlay sits on: charcoal, a lit
+         reactor glow in the top 45 %, and a bright object to test legibility.
+         Screenshot scripts may swap in a frame of the real 3D scene. */
+      #stage-wrap { position: relative; }
+      #backdrop {
+        position: absolute; inset: 0;
+        background:
+          radial-gradient(ellipse 34% 26% at 50% 24%, rgba(78, 205, 196, 0.35), rgba(78, 205, 196, 0) 70%),
+          radial-gradient(ellipse 18% 14% at 64% 70%, rgba(250, 250, 246, 0.5), rgba(250, 250, 246, 0) 70%),
+          #1A1A1A;
+        background-size: cover;
+        background-position: center;
+      }
+      canvas { display: block; position: relative; }
+      #stats { position: fixed; right: 4px; bottom: 4px; font: 12px monospace; color: #FAFAF6; }
     </style>
   </head>
   <body>
-    <canvas id="stage"></canvas>
+    <div id="stage-wrap"><div id="backdrop"></div><canvas id="stage"></canvas></div>
     <div id="stats"></div>
     <script type="module" src="/src/dev/render-preview.ts"></script>
   </body>

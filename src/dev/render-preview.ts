@@ -5,10 +5,13 @@
  *   mode=idle|take|video   t=<song seconds>   shot=<seat>|wide
  *   size=1400x700          dpr=2              humans=11010
  *   groove=0.8             rm=1 (reduced motion)  rec=1
+ *   remote=00100 (seats played from a phone)
  *   play=1  (animate from t)     bench=600  (time that many draw() calls)
+ *   raf=1 (pace the bench on requestAnimationFrame)
  */
 import { GOOD, GOOD_S, MISS, PENDING, PERFECT } from '../engine';
 import { createRenderer } from '../render';
+import { DISPLAY_FAMILY } from '../render/style';
 import { BAR_S, NOTES, SEATS } from '../score';
 import type { Frame, FrameMode, RenderLabels, SeatFrame } from '../types';
 
@@ -22,26 +25,51 @@ const dpr = Number(q.get('dpr') ?? String(devicePixelRatio || 1));
 const humansBits = q.get('humans') ?? '11010';
 const humans = SEATS.map((_, i) => humansBits[i] === '1');
 const groove = Number(q.get('groove') ?? '0.8');
+const remoteBits = q.get('remote') ?? '00100';
+const remote = SEATS.map((_, i) => remoteBits[i] === '1' && humans[i] === true);
 
 const labels: RenderLabels = {
   seats: [
-    { key: 'A', name: 'Geobacter', instrument: 'nanowire bass' },
-    { key: 'S', name: 'Shewanella', instrument: 'flavin keys' },
-    { key: 'D', name: 'Reed mannagrass', instrument: 'leaf chimes' },
-    { key: 'F', name: 'Sporomusa', instrument: 'vinegar drum' },
-    { key: 'G', name: 'Methanobacterium', instrument: 'bubble tuba' },
+    { key: 'A', name: 'Geobacter', instrument: 'nanowire bass', fact: 'Geobacter passes electrons along wires it grows itself.' },
+    { key: 'S', name: 'Shewanella', instrument: 'flavin keys', fact: 'Shewanella sends out yellow shuttles that carry its electrons.' },
+    { key: 'D', name: 'Reed mannagrass', instrument: 'leaf chimes', fact: 'Reed roots leak sugar that feeds the microbes below.' },
+    {
+      key: 'F',
+      name: 'Sporomusa',
+      instrument: 'vinegar drum',
+      fact: 'Sporomusa turns electrons and carbon dioxide into acetate, the acid in vinegar.',
+    },
+    {
+      key: 'G',
+      name: 'Methanobacterium',
+      instrument: 'bubble tuba',
+      fact: 'Methanobacterium turns electrons and carbon dioxide into methane.',
+    },
   ],
   perfect: 'PERFECT',
   good: 'GOOD',
   miss: 'MISS',
   machine: 'MACHINE',
+  phone: 'PHONE',
   take: 'TAKE',
   onAir: 'ON AIR',
+  battery: 'BATTERY',
+  winner: 'WINNER',
   countIn: ['4', '3', '2', 'GO'],
-  title: 'Invisible Heroes',
-  subtitle: 'The Biofilm Band',
+  title: 'THE BIOFILM BAND',
+  subtitle: 'an Invisible Heroes video',
   rec: 'REC',
   theEnd: 'THE END',
+  lyrics: [
+    'Well, I got bacteria in my fuel cell tonight',
+    "They're munchin' on sewage by the pale moonlight",
+    'Down in the chamber where the microbes play',
+    "Electrons dancin' like it's judgment day",
+    "Geobacter's singing its electron lullaby",
+    "It's a microscopic carnival ride",
+    "So here's to the bugs that nobody sees",
+  ],
+  chant: ['WE ARE THE MICROBES!', 'CLEANING YOUR WATER!', 'MAKING ELECTRICITY!'],
 };
 
 function h01(a: number, b: number): number {
@@ -69,6 +97,9 @@ const frame: Frame = {
   t: t0,
   now: 0,
   humans,
+  remote,
+  charge: [0, 0, 0, 0, 0],
+  leader: null,
   grades,
   seats,
   groove,
@@ -80,9 +111,13 @@ const frame: Frame = {
 };
 
 /** Fill grades and seats for song time t (outside the timed section). */
+const charge = [0, 0, 0, 0, 0];
+const perSeat = SEATS.map((_, seat) => NOTES.filter((n) => n.seat === seat).length);
+
 function fill(t: number, now: number): void {
   frame.t = t;
   frame.now = now;
+  charge.fill(0);
   for (const s of seats) {
     s.hitAt = -Infinity;
     s.missAt = -Infinity;
@@ -103,6 +138,7 @@ function fill(t: number, now: number): void {
     grades[n.i] = g;
     if (n.t > t + 0.2) continue;
     const s = seats[n.seat]!;
+    if ((g === GOOD || g === PERFECT) && n.t <= t) charge[n.seat]! += (g === PERFECT ? 1 : 0.7) * (humans[n.seat] ? 1 : 0.8);
     if ((g === GOOD || g === PERFECT) && hitTime <= t) {
       s.hitAt = humans[n.seat] && mode !== 'idle' ? hitTime : n.t;
       s.hitGrade = g;
@@ -111,11 +147,23 @@ function fill(t: number, now: number): void {
       s.missAt = n.t + GOOD_S;
     }
   }
+  let leader: number | null = null;
+  for (let i = 0; i < charge.length; i++) {
+    charge[i] = charge[i]! / perSeat[i]!;
+    if (charge[i]! > 0 && (leader === null || charge[i]! > charge[leader]!)) leader = i;
+  }
+  frame.charge = charge;
+  frame.leader = leader;
 }
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 canvas.style.width = `${sw}px`;
 canvas.style.height = `${sh}px`;
+const wrap = document.getElementById('stage-wrap');
+if (wrap) {
+  wrap.style.width = `${sw}px`;
+  wrap.style.height = `${sh}px`;
+}
 const renderer = createRenderer(canvas, labels);
 renderer.resize(sw, sh, dpr);
 
@@ -159,7 +207,8 @@ function report(times: number[], first: number): void {
   window.__ready = true;
 }
 
-if (bench > 0) {
+/** Time the bench once the display face is in, so its one-off layer rebuild is not counted. */
+function runBench(): void {
   const times: number[] = [];
   const first = step(0);
   if (paced) {
@@ -174,6 +223,26 @@ if (bench > 0) {
     for (let k = 1; k <= bench; k++) times.push(step(k));
     report(times, first);
   }
+}
+
+if (bench > 0) {
+  // Draw once so the renderer starts loading its face, then wait for it.
+  fill(t0, 10);
+  renderer.draw(frame);
+  const started = performance.now();
+  const settle = (): void => {
+    let loaded = false;
+    document.fonts.forEach((f) => {
+      if (f.family.replace(/"/g, '') === DISPLAY_FAMILY && f.status === 'loaded') loaded = true;
+    });
+    if (!loaded && performance.now() - started < 3000) {
+      setTimeout(settle, 50);
+      return;
+    }
+    renderer.draw(frame);
+    setTimeout(runBench, 100);
+  };
+  settle();
 } else if (q.get('play') === '1') {
   const start = performance.now();
   const loop = (): void => {
@@ -188,10 +257,17 @@ if (bench > 0) {
   requestAnimationFrame(loop);
   window.__ready = true;
 } else {
-  // A still: settle the camera with a few frames leading up to t.
+  // A still: settle the camera with a few frames leading up to t, then keep
+  // redrawing t for a moment so the display face shows once it has loaded.
   for (let k = 20; k >= 0; k--) {
     fill(t0 - k / 60, 10 - k / 60);
     renderer.draw(frame);
   }
-  window.__ready = true;
+  let frames = 0;
+  const hold = (): void => {
+    renderer.draw(frame);
+    if (++frames < 30) requestAnimationFrame(hold);
+    else window.__ready = true;
+  };
+  requestAnimationFrame(hold);
 }

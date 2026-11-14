@@ -11,8 +11,8 @@
       name="description"
       content="A same-screen music game for one to five players. Each player is a microbe or a plant with an instrument: catch the electrons on the beat, then watch the music video of your take."
     />
-    <meta name="theme-color" content="#0C1638" />
-    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -35,6 +35,7 @@
         </div>
       </header>
       <main id="stage" class="stage" tabindex="-1">
+        <canvas id="scene" aria-hidden="true"></canvas>
         <canvas id="canvas"></canvas>
         <div id="overlay" class="overlay"></div>
       </main>

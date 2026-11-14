@@ -22,7 +22,7 @@
   padding: 16px;
   border: 3px solid var(--ink);
   background: var(--card);
-  box-shadow: 6px 6px 0 var(--ink);
+  box-shadow: 6px 6px 0 var(--teal);
 }
 
 /* On a phone the line-up is always a list of big rows, whichever way it is held. */
@@ -73,7 +73,7 @@
   gap: 6px;
   width: 100%;
   height: 100%;
-  border: 6px solid var(--ink);
+  border: 6px solid #000;
   background: var(--seat);
   color: var(--seat-ink, #fff);
   font: inherit;
@@ -88,21 +88,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* White on tomato, sky and leaf is 3.5 to 3.8:1, too little for the small labels on the pad. Ink is
-   4.7 to 5.1:1. The seat colour is read from the inline style because the pad has no seat attribute;
-   plum keeps white (5.7:1) and mustard already uses ink. */
-.pad[style*='--tomato'],
-.pad[style*='--sky'],
-.pad[style*='--leaf'] {
-  color: var(--ink);
-}
-.pad[style*='--tomato'][data-judge='perfect'],
-.pad[style*='--sky'][data-judge='perfect'],
-.pad[style*='--leaf'][data-judge='perfect'],
-.pad[style*='--tomato'][data-judge='good'],
-.pad[style*='--sky'][data-judge='good'],
-.pad[style*='--leaf'][data-judge='good'] {
-  border-color: var(--ink);
+/* Near-black on every pad: the five seat colours are all bright. */
+.pad[data-judge='perfect'],
+.pad[data-judge='good'] {
+  border-color: var(--gold);
 }
 
 .pad:focus-visible {
@@ -115,7 +104,7 @@
 
 .pad[data-judge='perfect'],
 .pad[data-judge='good'] {
-  border-color: #fff;
+  border-color: var(--gold);
 }
 
 .pad[data-judge='miss'] {
