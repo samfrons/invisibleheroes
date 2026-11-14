@@ -5,8 +5,9 @@
  * clear glass with environment reflections, absorbing liquids (transmission
  * on 'high', a translucent fake on 'low'), matte carbon felt, brushed
  * titanium mesh, copper leads. The set around it is 1970s science fiction:
- * a navy sky with a horizon glow, a receding mission-control grid, sparkle
- * stars, a ringed planet. Textures are painted on a 2D canvas, never fetched.
+ * a sky with a horizon glow, a receding mission-control grid, sparkle stars,
+ * and a city skyline whose light follows the battery. Textures are painted on
+ * a 2D canvas, never fetched.
  */
 import {
   AdditiveBlending,
@@ -23,6 +24,7 @@ import {
   ShaderMaterial,
   type Texture,
 } from 'three';
+import { MIN_BUILDING_H, ROOFTOP_UNIT_MAX_H } from './city-layout';
 import { INK, PAPER, SEAT_STRONG } from './palette';
 
 export type Quality = 'high' | 'low';
@@ -179,17 +181,26 @@ void main() {
   gl_Position = p.xyww;
 }`;
 
-const SKY_FRAG = /* glsl */ `
+/**
+ * The sky is a screen-space radial. The floor and the city sample the SAME
+ * radial for their distance haze, so far things dissolve into exactly the sky
+ * behind them at any battery level: no seam at the horizon.
+ */
+const SKY_UNIFORMS = /* glsl */ `
 uniform vec3 hiCol;
 uniform vec3 loCol;
 uniform vec2 resolution;
 uniform vec2 centre;
-void main() {
-  vec2 uv = gl_FragCoord.xy / resolution;
+vec3 skyAt(vec2 fragCoord) {
+  vec2 uv = fragCoord / resolution;
   vec2 d = (uv - centre) * vec2(resolution.x / resolution.y, 1.0);
-  float r = length(d);
-  vec3 col = mix(hiCol, loCol, smoothstep(0.0, 0.95, r));
-  gl_FragColor = vec4(col, 1.0);
+  return mix(hiCol, loCol, smoothstep(0.0, 0.95, length(d)));
+}`;
+
+const SKY_FRAG = /* glsl */ `
+${SKY_UNIFORMS}
+void main() {
+  gl_FragColor = vec4(skyAt(gl_FragCoord.xy), 1.0);
   #include <colorspace_fragment>
 }`;
 
@@ -218,9 +229,9 @@ void main() {
 }`;
 
 const GRID_FRAG = /* glsl */ `
+${SKY_UNIFORMS}
 uniform vec3 line;
 uniform vec3 ground;
-uniform vec3 fogCol;
 uniform float cell;
 uniform float scroll;
 uniform vec3 eye;
@@ -239,25 +250,130 @@ void main() {
   // Only a faint hint, and none in front of the console (under the lanes).
   float behind = smoothstep(-2.0, -14.0, vW.z);
   vec3 col = ground + line * l * behind * 0.16;
-  col = mix(col, fogCol, fog);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
+  // Fade to the sky AFTER tonemapping: the sky is not tonemapped, so this matches it exactly.
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, skyAt(gl_FragCoord.xy), fog);
   #include <colorspace_fragment>
 }`;
 
-/** The mission-control floor: a teal grid on dark navy receding into the horizon haze. */
-export function gridMaterial(cell: number): ShaderMaterial {
+/** The uniforms the sky owns; the floor and the city share these objects, so one write moves all three. */
+export type SkyUniforms = Pick<ShaderMaterial['uniforms'], 'hiCol' | 'loCol' | 'resolution' | 'centre'>;
+
+const skyUniformsOf = (sky: ShaderMaterial): SkyUniforms => ({
+  hiCol: sky.uniforms.hiCol!,
+  loCol: sky.uniforms.loCol!,
+  resolution: sky.uniforms.resolution!,
+  centre: sky.uniforms.centre!,
+});
+
+/** The mission-control floor: a teal grid on dark ground receding into the sky's horizon haze. */
+export function gridMaterial(cell: number, sky: ShaderMaterial): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
+      ...skyUniformsOf(sky),
       line: { value: new Color('#4ECDC4') },
       ground: { value: new Color('#0B0B0C') },
-      fogCol: { value: new Color('#141414') },
       cell: { value: cell },
       scroll: { value: 0 },
       eye: { value: [0, 0, 0] },
     },
     vertexShader: GRID_VERT,
     fragmentShader: GRID_FRAG,
+  });
+}
+
+const CITY_VERT = /* glsl */ `
+varying vec3 vN;
+varying vec3 vSize;
+varying vec3 vLocal;
+varying float vSeed;
+varying float vDepth;
+void main() {
+  // Instances are axis-aligned boxes: the scale is the box's size, and the unit box's normal is its face.
+  vSize = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  vLocal = (position + 0.5) * vSize;
+  vN = normal;
+  vSeed = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+  vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0);
+  vDepth = length(w.xyz - cameraPosition);
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+
+const CITY_FRAG = /* glsl */ `
+${SKY_UNIFORMS}
+uniform vec3 wallCol;
+uniform vec3 winCol;
+uniform float lit;
+uniform float glow;
+uniform float time;
+varying vec3 vN;
+varying vec3 vSize;
+varying vec3 vLocal;
+varying float vSeed;
+varying float vDepth;
+float h21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+void main() {
+  vec3 n = normalize(vN);
+  bool top = n.y > 0.5;
+  bool xFace = abs(n.x) > 0.5;
+  // vSeed is the same at every vertex, but its interpolated copy differs by ~1e-7 between pixels,
+  // and the window hash below amplifies that into per-pixel noise. Snap it back to one value.
+  float seed = floor(vSeed * 4096.0 + 0.5) / 4096.0;
+  // Each building has its own tone; faces turned from the light go darker, roofs catch the sky.
+  float tone = 0.82 + 0.34 * seed;
+  float shade = top ? 1.18 : (xFace ? 0.78 : 0.96);
+  vec3 col = wallCol * tone * shade;
+
+  // Windows: a grid on the four sides of any building (not a rooftop unit), above the street floor.
+  float tall = step(${((MIN_BUILDING_H + ROOFTOP_UNIT_MAX_H) / 2).toFixed(2)}, vSize.y) * (top ? 0.0 : 1.0) * step(1.2, vLocal.y);
+  vec2 q = vec2(xFace ? vLocal.z : vLocal.x, vLocal.y) / vec2(1.0, 1.25);
+  vec2 id = floor(q);
+  vec2 f = fract(q);
+  // Soft-edged panes, and a pane that is only a pixel or two wide fades to the grid's average,
+  // so distant rows blur into a steady glow instead of crawling when the camera drifts.
+  vec2 w = fwidth(q);
+  float px = max(w.x, w.y);
+  vec2 aa = max(w, vec2(1e-3)) * 0.75;
+  float pane = smoothstep(0.2 - aa.x, 0.2 + aa.x, f.x) * (1.0 - smoothstep(0.8 - aa.x, 0.8 + aa.x, f.x))
+             * smoothstep(0.3 - aa.y, 0.3 + aa.y, f.y) * (1.0 - smoothstep(0.78 - aa.y, 0.78 + aa.y, f.y));
+  float resolved = 1.0 - smoothstep(0.3, 0.75, px);
+  pane = mix(0.6 * 0.48, pane, resolved) * tall;
+  float r = h21(id + vec2(seed * 91.0, xFace ? 3.7 : 0.0));
+  // A window is on when its own dice fall under the lit fraction; the lights shimmer very slightly.
+  float on = mix(lit, step(r, lit), resolved);
+  float shimmer = mix(1.0, 0.92 + 0.08 * sin(time * 1.3 + r * 40.0), resolved);
+  vec3 sky = skyAt(gl_FragCoord.xy);
+  vec3 glass = mix(wallCol * 0.5, sky, 0.18);
+  vec3 lamp = winCol * glow * mix(1.0, 0.75 + 0.5 * h21(id + 5.0), resolved) * shimmer;
+  col = mix(col, mix(glass, lamp, on), pane);
+
+  // Distance haze: far buildings dissolve into the very sky behind them.
+  float fog = smoothstep(30.0, 125.0, vDepth) * 0.88;
+  gl_FragColor = vec4(mix(col, sky, fog), 1.0);
+  #include <colorspace_fragment>
+}`;
+
+/**
+ * The city: lit boxes with a procedural window grid. `wallCol`, `lit` (the
+ * fraction of windows on) and `glow` are set each frame from the battery
+ * (daylight.ts); the haze samples the sky's own radial, so it shares the
+ * sky's uniforms.
+ */
+export function cityMaterial(sky: ShaderMaterial): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      ...skyUniformsOf(sky),
+      wallCol: { value: new Color('#121930') },
+      winCol: { value: new Color('#FFD596') },
+      lit: { value: 0 },
+      glow: { value: 1 },
+      time: { value: 0 },
+    },
+    vertexShader: CITY_VERT,
+    fragmentShader: CITY_FRAG,
   });
 }
 
@@ -389,23 +505,6 @@ export function streamMaterial(goldHex: string): ShaderMaterial {
     transparent: true,
     depthWrite: false,
     blending: AdditiveBlending,
-  });
-}
-
-/** A line-art planet: a dark body with a glowing fresnel rim. */
-export function rimMaterial(rimHex: string, bodyHex: string): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { rim: { value: new Color(rimHex) }, body: { value: new Color(bodyHex) } },
-    vertexShader: /* glsl */ `
-      varying vec3 vN; varying vec3 vV;
-      void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: /* glsl */ `
-      uniform vec3 rim; uniform vec3 body; varying vec3 vN; varying vec3 vV;
-      void main() { float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
-        vec3 c = body + rim * (smoothstep(0.55, 1.0, f) * 1.1);
-        gl_FragColor = vec4(c, 1.0);
-        #include <colorspace_fragment>
-      }`,
   });
 }
 

@@ -84,6 +84,23 @@ Power is voltage times current, and the voltage sags as the current climbs, as
 in a real cell. The results card says how much energy the take made against a
 perfect band, and which player's part held the cell back the most.
 
+### The city runs on the battery
+
+Behind the stage is a city, after the one in MESSAI's lab simulator
+(`/lab/city`): flat blocks, blocks with a rooftop unit and slender towers,
+seeded so everyone sees the same skyline. Its light follows the battery. A flat
+pack, or a band that has stopped landing notes, leaves it a dark night with a
+few windows lit; as the pack charges and the band finds its groove, the sky
+pales through dusk amber to a daylight haze, the buildings turn from
+silhouettes to stone and more windows come on.
+
+The level is `0.6 x` the pack's mean charge `+ 0.4 x` the groove, eased over
+about a second so the city breathes with the band and not with each beat
+(`batteryLevel` and `smoothLevel` in `src/three/daylight.ts`). The charge only
+ever climbs through a take, so the groove is what lets the city dim again when
+the band falters. A replay of a take lights the city the same way, so the saved
+video shows it too.
+
 ### Play with phones
 
 Put the game on a big screen and press **Add phones**. A QR code appears.
@@ -164,6 +181,8 @@ when a room is opened.
 | `src/director.ts` | The video's shot list, decided from the take alone                            |
 | `src/game.ts`     | The conductor: the clock, the animation loop, sound scheduled ahead           |
 | `src/render.ts`   | The canvas: machine, heroes, camera. Draws from one frame of plain data       |
+| `src/three/daylight.ts` | The battery's level and the city's palette at that level (pure)          |
+| `src/three/city-layout.ts`, `src/three/city.ts` | Where the buildings stand (pure), and the instanced city  |
 | `src/synth.ts`    | Five synthesised instruments and the machine's clicks                         |
 | `src/recorder.ts` | Captures the canvas and the mix into a video file                             |
 | `src/storage.ts`  | Takes played, best score and days in a row, kept on the device                |

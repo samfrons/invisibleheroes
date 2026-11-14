@@ -9,7 +9,7 @@
  *   copper lead: anode rod -> arc -> bus bar over the pack -> each cell
  *   red return lead: pack -> cathode rod
  *   a mission-control console under both, gauges at its ends, dark in the middle
- *   floor grid to the horizon, sky dome, stars, a ringed planet, concentric arcs
+ *   floor grid to the horizon, a city skyline lit by the battery, sky dome, concentric arcs
  *
  * draw() is stateless for everything the game decides (charge, sparks,
  * pulses, the leader) and keeps only cosmetic easing state for the camera.
@@ -59,6 +59,8 @@ import {
 import type { Frame } from '../types';
 import { BEAT_S } from '../score';
 import type { Centrepiece, CentrepieceOptions } from './centrepiece';
+import { buildCity } from './city';
+import { batteryLevel, createDaylight, daylight, smoothLevel } from './daylight';
 import {
   type Quality,
   DIAL_SWEEP,
@@ -67,7 +69,6 @@ import {
   labelTexture,
   linkMaterial,
   nodeMaterial,
-  rimMaterial,
   streamMaterial,
   feltMaterial,
   feltTexture,
@@ -308,7 +309,7 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
   const glowMap = T(glowTexture());
   const glowMat = M(glowSprite(glowMap));
 
-  // ---- set: charcoal radial, biofilm network, line-art planet, arcs, faint grid ----------
+  // ---- set: sky radial, biofilm network, arcs, faint grid, the city ----------
   const skyMat = M(skyMaterial(CHARCOAL_HI, CHARCOAL_LO));
   const sky = mesh(G(new SphereGeometry(90, 16, 8)), skyMat, 0, 0, 0);
   sky.renderOrder = -10;
@@ -390,19 +391,6 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
   links.frustumCulled = false;
   scene.add(links);
 
-  // Line-art planet: a dark body with a coral rim and two thin teal rings.
-  const planetGroup = new Group();
-  planetGroup.position.set(-27, 8.5, -80);
-  scene.add(planetGroup);
-  const planet = new Mesh(G(new SphereGeometry(6, hi ? 48 : 24, hi ? 24 : 12)), M(rimMaterial(CORAL, '#141416')));
-  planetGroup.add(planet);
-  const ringLine = M(new MeshBasicMaterial({ color: new Color(TEAL_GLOW), transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
-  for (const r of [9.2, 10.4, 12.2]) {
-    const ring = new Mesh(G(new TorusGeometry(r, 0.07, 4, 128)), ringLine);
-    ring.rotation.set(1.25, 0.25, 0.35);
-    planetGroup.add(ring);
-  }
-
   // Concentric arcs behind the stage, quiet line-art in coral and teal.
   const arcGroup = new Group();
   arcGroup.position.set(0.3, 1.0, -16);
@@ -421,10 +409,17 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
     arcGroup.add(a);
   }
 
-  const gridMat = M(gridMaterial(hi ? 1.0 : 1.5));
+  const gridMat = M(gridMaterial(hi ? 1.0 : 1.5, skyMat));
   const grid = mesh(G(new PlaneGeometry(240, 160)), gridMat, 0, FLOOR_Y, -60);
   grid.rotation.x = -Math.PI / 2;
   grid.renderOrder = -8;
+
+  // The city on the horizon: lit by the battery (see daylight.ts), standing on the grid floor.
+  const city = buildCity(skyMat, FLOOR_Y, quality, { geometry: G, material: M });
+  scene.add(city.group);
+  const day = createDaylight();
+  /** The battery level the city is lit for, eased so it breathes with the band instead of flickering. */
+  let cityLevel = 0;
 
   // ---- console ------------------------------------------------------------------
   mesh(G(new BoxGeometry(CON_W, 1.28, 2.7)), consoleNavy, 0, -0.76, -0.05);
@@ -873,6 +868,16 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
     mean /= SEATS;
     const leader = frame.leader ?? null;
 
+    // The city's light follows the battery: dark and quiet when the pack is flat or the band
+    // falters, the day coming up as it charges and grooves. The same Frame gives the same city.
+    const wantLevel = batteryLevel(frame.charge, frame.groove);
+    cityLevel = first ? wantLevel : smoothLevel(cityLevel, wantLevel, dt);
+    daylight(cityLevel, day);
+    (skyMat.uniforms.hiCol!.value as Color).setRGB(day.skyHi[0], day.skyHi[1], day.skyHi[2], SRGBColorSpace);
+    (skyMat.uniforms.loCol!.value as Color).setRGB(day.skyLo[0], day.skyLo[1], day.skyLo[2], SRGBColorSpace);
+    (gridMat.uniforms.ground!.value as Color).setRGB(day.ground[0], day.ground[1], day.ground[2], SRGBColorSpace);
+    city.update(day, still ? 0 : now);
+
     // Camera: a slow drift, closer on a video shot.
     const ampWant = still ? 0 : frame.mode === 'idle' ? 0.16 : frame.mode === 'video' ? 0.2 : 0.05;
     const ease = 1 - Math.exp(-dt * 1.6);
@@ -946,7 +951,6 @@ export function buildCentrepiece(canvas: HTMLCanvasElement, options: Centrepiece
     eye[0] = camera.position.x;
     eye[1] = camera.position.y;
     eye[2] = camera.position.z;
-    planet.rotation.y = time * 0.02;
     arcGroup.rotation.z = still ? 0 : Math.sin(time * 0.1) * 0.03;
 
     glowCount = 0;
