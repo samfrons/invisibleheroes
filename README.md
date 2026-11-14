@@ -4,13 +4,18 @@ A music game for one to five players around one screen, about a minute a
 take. Play with keys, with fingers, or scan a QR code and use your phone as
 your button.
 
-Each player is a microbe (or a plant) with an instrument. Electrons roll down a
-chain-reaction machine, one chute per player. Hit your key when the electron
-reaches your ring and your hero plays its note. Land enough of them together
-and the lamp lights up. When the song ends the game cuts your take into a
-music video you can watch, save as a file and send to someone as a link.
+It is a band battle. Each player is a microbe (or a plant) with an
+instrument. Electrons run down five lanes, one per player; hit your key when
+an electron reaches your ring and it goes through a fuel cell into your cell
+of a five-cell battery. The fullest cell wins the take, and the whole pack is
+the band's score. When the song ends the game cuts the take into a music video
+you can watch, save as a file and send to someone as a link.
 
-![The machine in the middle of a five-player take](docs/screenshots/take.png)
+The stage is two layers: a 3D microbial fuel cell and its battery (three.js,
+fetched after the page is up), and over it the note lanes. Adding
+`?scene=off` to the address plays without the 3D layer on a slow device.
+
+![Mid-song: the fuel cell and battery behind the note lanes](docs/screenshots/take.png)
 
 ## How to play
 
@@ -70,7 +75,7 @@ same wifi (then open the big screen at the computer's network address, not
 
 <p>
   <img src="docs/screenshots/phone-portrait.png" alt="A take on a phone held upright" width="280" />
-  <img src="docs/screenshots/phone-lobby.png" alt="Choosing the line-up on a phone" width="280" />
+  <img src="docs/screenshots/phone-lobby.png" alt="The result on a player's phone" width="280" />
 </p>
 
 ## The heroes are real
